@@ -1,10 +1,10 @@
 <div align="center">
 
-![Argent Sentinel](https://img.shields.io/badge/Status-Operational-brightgreen?style=for-the-badge)
-![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-Active-green?style=for-the-badge&logo=fastapi)
-![TabNet](https://img.shields.io/badge/TabNet-NeuralNet-purple?style=for-the-badge)
-![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker)
+![Status](https://img.shields.io/badge/status-operational-brightgreen?style=flat)
+![Python](https://img.shields.io/badge/python-3.10+-blue?style=flat&logo=python)
+![FastAPI](https://img.shields.io/badge/fastapi-active-green?style=flat&logo=fastapi)
+![TabNet](https://img.shields.io/badge/tabnet-neuralnet-purple?style=flat)
+![Docker](https://img.shields.io/badge/docker-ready-blue?style=flat&logo=docker)
 
 </div>
 
@@ -25,13 +25,6 @@
 ## Mission Brief
 
 In a world where every entity is a potential threat, **Argent Sentinel** stands as the autonomous guardian — a self-evolving Zero Trust decision engine powered by **TabNet** deep learning. It watches. It learns. It adapts. And it never sleeps.
-
-```
-    ____                __           ___  ___     
-   /  _/__  ____ ____  / /_____ ____/ _ \/ _ \__ _
-  _/ // _ \/ __ `/ _ \/  '_/ -_) __/ ___/ , _/  ' \
- /___/_//_/\_,_/_//_/_/\_\\__/ / /_/_/  /_/|_/|_|_|
-```
 
 ---
 
@@ -129,15 +122,14 @@ The sentinel evaluates every incoming entity through a **15-dimensional feature 
 THRESHOLD = 0.550
 MARGIN    = 0.162
 
-┌─────────────────────────────┐
-│  p >= THRESHOLD + MARGIN    │  ──►  ISOLATE   (BLOCKED)
-├─────────────────────────────┤
-│  THRESHOLD <= p < +MARGIN   │  ──►  RATE_LIMIT (THROTTLED)
-├─────────────────────────────┤
-│  p < THRESHOLD              │  ──►  ALLOW     (GRANTED)
-└─────────────────────────────┘
+if p >= THRESHOLD + MARGIN:  # p >= 0.712
+    action = "ISOLATE"    # BLOCKED
+elif p >= THRESHOLD:       # 0.550 <= p < 0.712
+    action = "RATE_LIMIT" # THROTTLED
+else:                      # p < 0.550
+    action = "ALLOW"      # GRANTED
 
-TRUST_SCORE = (1 - p) × 100
+TRUST_SCORE = (1 - p) * 100
 ```
 
 ---
@@ -216,12 +208,12 @@ While the production model makes decisions, a **shadow clone** learns silently i
 
 ## Prometheus Telemetry
 
-```
-argent_requests_total         ──► Total request count
-argent_attack_decisions_total ──► Decisions by threat category
-argent_gateway_latency_ms     ──► Gateway response histogram
-argent_sentinel_latency_ms    ──► Inference latency histogram
-```
+| Metric | Description |
+|:---|:---|
+| `argent_requests_total` | Total request count |
+| `argent_attack_decisions_total` | Decisions by threat category |
+| `argent_gateway_latency_ms` | Gateway response histogram |
+| `argent_sentinel_latency_ms` | Inference latency histogram |
 
 ---
 
@@ -243,7 +235,7 @@ argent_sentinel_latency_ms    ──► Inference latency histogram
 ## Data Pipeline
 
 ```
-1.  Telemetry injected → /ingest or /ingest-batch
+1.  Telemetry injected -> /ingest or /ingest-batch
 2.  Persisted to SQLite vault
 3.  ArgentBrain builds 15-feature neural vector
 4.  TabNet outputs prob_attack, trust, decision, explanation
