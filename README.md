@@ -252,6 +252,6 @@ While the production model makes decisions, a **shadow clone** learns silently i
 
 **Argent Sentinel** — *Where AI meets Zero Trust.*
 
-**License:** MIT
+**License:** MIT 
 
 </div>
