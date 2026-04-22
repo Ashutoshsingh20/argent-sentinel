@@ -1,0 +1,320 @@
+{% extends "saas_layout.html" %}
+
+{% block title %}Threat Operations - Argent Sentinel{% endblock %}
+{% block header_title %}Threat Operations Control{% endblock %}
+
+{% block extra_css %}
+<style>
+    .soc-card {
+        padding: 1.25rem;
+    }
+    .timeline-marker {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        border: 2px solid #fff;
+        margin-left: -7px;
+        z-index: 10;
+        position: relative;
+    }
+    .timeline-line {
+        position: absolute;
+        left: 24px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: #000;
+        z-index: 0;
+    }
+    .alert-card {
+        transition: all 0.2s ease;
+    }
+    .alert-card:hover {
+        transform: translateX(4px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- System Status Row -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="enterprise-card soc-card bg-white">
+            <p class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">System Mode</p>
+            <div class="flex items-center gap-2 mt-1">
+                <div class="w-2 h-2 rounded-full bg-black animate-pulse"></div>
+                <span class="text-lg font-black text-black uppercase" id="soc-system-mode">NORMAL</span>
+            </div>
+        </div>
+        <div class="enterprise-card soc-card bg-white">
+            <p class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Circuit Breaker</p>
+            <div class="text-lg font-black text-black mt-1 uppercase" id="soc-circuit-state">CLOSED</div>
+        </div>
+        <div class="enterprise-card soc-card bg-white">
+            <p class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Kill Switch</p>
+            <div class="text-lg font-black text-black mt-1 uppercase" id="soc-kill-switch">DISABLED</div>
+        </div>
+        <div class="enterprise-card soc-card bg-white">
+            <p class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Total Fallbacks</p>
+            <div class="text-lg font-black text-black mt-1 uppercase" id="soc-fallback-count">0</div>
+        </div>
+    </div>
+
+    <!-- Analytics Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Alert Volume Chart -->
+        <div class="lg:col-span-2 enterprise-card p-6 flex flex-col h-[320px]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-sm font-black text-black uppercase tracking-widest">ALERT_VOLUME_CONTEXT</h3>
+                <span class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">REALTIME_STREAM</span>
+            </div>
+            <div class="flex-1 min-h-0">
+                <canvas id="alertVolumeChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Severity Breakdown -->
+        <div class="enterprise-card p-6 flex flex-col h-[320px]">
+             <h3 class="text-sm font-black text-black uppercase tracking-widest mb-4">SEVERITY_DISTRIBUTION</h3>
+             <div class="flex-1 min-h-0">
+                 <canvas id="severityDonut"></canvas>
+             </div>
+             <div class="mt-4 flex justify-around">
+                 <div class="text-center">
+                     <div class="w-2 h-2 rounded-full bg-zinc-100 mx-auto mb-1 border border-black"></div>
+                     <p class="text-[9px] font-black text-zinc-400 uppercase">Low</p>
+                 </div>
+                 <div class="text-center">
+                     <div class="w-2 h-2 rounded-full bg-zinc-400 mx-auto mb-1"></div>
+                     <p class="text-[9px] font-black text-zinc-400 uppercase">Warn</p>
+                 </div>
+                 <div class="text-center">
+                     <div class="w-2 h-2 rounded-full bg-black mx-auto mb-1"></div>
+                     <p class="text-[9px] font-black text-zinc-400 uppercase">Crit</p>
+                 </div>
+             </div>
+        </div>
+    </div>
+
+    <!-- Main SOC Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-[600px]">
+        <!-- Timeline -->
+        <div class="enterprise-card flex flex-col h-full bg-white overflow-hidden">
+            <div class="px-6 py-4 border-b border-black bg-zinc-50/50 flex justify-between items-center">
+                <h3 class="text-sm font-black text-black flex items-center gap-2 uppercase tracking-widest">
+                    <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    INTERVENTION_TIMELINE
+                </h3>
+                <span class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-black animate-pulse"></span>
+                    <span class="text-[9px] font-black text-black tracking-widest uppercase">LIVE_TELEMETRY</span>
+                </span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 relative" id="timeline-container">
+                <div class="timeline-line"></div>
+                <div class="space-y-8" id="timeline-content">
+                    <div class="p-12 text-center text-slate-400 italic text-xs">Awaiting telemetry...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="enterprise-card flex flex-col h-full bg-white overflow-hidden">
+            <div class="px-6 py-4 border-b border-black bg-black flex justify-between items-center">
+                <h3 class="text-sm font-black text-white flex items-center gap-2 uppercase tracking-widest">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                    TACTICAL_ALERTS
+                </h3>
+                <button class="text-[9px] font-black text-white/60 hover:text-white border border-white/20 px-3 py-1 rounded uppercase tracking-widest transition-colors">ACK_ALL</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 space-y-4" id="alerts-container">
+                <div class="p-8 text-center text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-xl">No active tactical alerts.</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let volumeChart, severityChart;
+    let volumeData = Array(30).fill(0), volumeLabels = Array(30).fill('');
+
+    function initSocCharts() {
+        const volumeCtx = document.getElementById('alertVolumeChart');
+        const severityCtx = document.getElementById('severityDonut');
+
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#71717a';
+
+        if (volumeCtx) {
+            volumeChart = new Chart(volumeCtx, {
+                type: 'line',
+                data: {
+                    labels: volumeLabels,
+                    datasets: [{
+                        label: 'Interventions',
+                        data: volumeData,
+                        borderColor: '#000000',
+                        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                        fill: true,
+                        tension: 0.1,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { display: false, suggestedMax: 10 },
+                        x: { display: false }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        if (severityCtx) {
+            severityChart = new Chart(severityCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Info', 'Warning', 'Critical'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#f4f4f5', '#a1a1aa', '#000000'],
+                        borderWidth: 0,
+                        cutout: '80%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    }
+
+    function formatTimeSoc(ts) {
+        const d = new Date(ts * 1000);
+        return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    async function loadTimeline() {
+        try {
+            const res = await fetch('/soc/timeline');
+            if(!res.ok) return;
+            const data = await res.json();
+            
+            // Update volume chart
+            if (volumeChart) {
+                const recentCount = data.events ? data.events.filter(e => Date.now()/1000 - e.timestamp < 2).length : 0;
+                volumeData.push(recentCount);
+                volumeData.shift();
+                volumeChart.update('none');
+            }
+
+            const cont = document.getElementById('timeline-content');
+            if(data.events && data.events.length > 0) {
+                cont.innerHTML = data.events.map(e => {
+                    let color = 'bg-zinc-100 border-black';
+                    let text = 'text-black';
+                    let badge = 'border-black';
+                    
+                    if(e.type === 'ISOLATE' || e.type === 'ALERT') { color = 'bg-black'; text = 'text-white font-black'; badge = 'bg-black text-white border-black'; }
+                    else if(e.type === 'RATE_LIMIT' || e.type === 'SAFETY') { color = 'bg-zinc-500'; text = 'text-white font-black'; badge = 'bg-zinc-500 text-white border-zinc-500'; }
+                    else if(e.type === 'ALLOW') { color = 'bg-white'; text = 'text-black font-black'; badge = 'border-black bg-white'; }
+                    
+                    const traceLink = e.id ? `<span class="text-[9px] font-black text-zinc-300 uppercase tracking-widest">ID: ${e.id.substring(0,8)}</span>` : '';
+
+                    return `
+                        <div class="relative pl-8 group">
+                            <div class="timeline-marker ${color.includes('bg-white') ? 'bg-white border-black' : color.split(' ')[0]}"></div>
+                            <div class="enterprise-card p-4 hover:border-black transition-all">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 rounded text-[8px] font-black tracking-widest border ${badge}">${e.type}</span>
+                                        <span class="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">${formatTimeSoc(e.timestamp)}</span>
+                                    </div>
+                                    ${traceLink}
+                                </div>
+                                <p class="text-[11px] font-black text-black uppercase tracking-tight">${e.entity_id || 'SYSTEM_EVENT'}</p>
+                                <p class="text-[10px] text-zinc-500 font-bold uppercase mt-1 leading-tight">${e.description || e.decision || 'NO_DESCRIPTION_AVAILABLE'}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        } catch(e) {}
+    }
+
+    async function loadAlerts() {
+        try {
+            const res = await fetch('/soc/alerts');
+            if(!res.ok) return;
+            const data = await res.json();
+            
+            const cont = document.getElementById('alerts-container');
+            if(data.alerts && data.alerts.length > 0) {
+                // Update severity chart
+                if (severityChart) {
+                    const counts = { INFO: 0, WARNING:0, CRITICAL:0 };
+                    data.alerts.forEach(a => counts[a.severity]++);
+                    severityChart.data.datasets[0].data = [counts.INFO, counts.WARNING, counts.CRITICAL];
+                    severityChart.update('none');
+                }
+
+                cont.innerHTML = data.alerts.map(a => {
+                    let color = 'text-black border-zinc-200 bg-zinc-50';
+                    if(a.severity === 'CRITICAL') color = 'text-white border-black bg-black';
+                    else if(a.severity === 'WARNING') color = 'text-black border-black bg-zinc-100 font-black';
+                    
+                    return `
+                        <div class="enterprise-card p-4 alert-card border-l-4 ${color.includes('bg-black') ? 'border-black' : 'border-zinc-300'}">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="px-2 py-0.5 rounded text-[8px] font-black tracking-widest border ${color}">${a.severity}</span>
+                                <span class="text-[10px] text-zinc-400 font-black uppercase tracking-tighter">${formatTimeSoc(a.timestamp)}</span>
+                            </div>
+                            <h4 class="text-[11px] font-black text-black uppercase tracking-tight">${a.title}</h4>
+                            <p class="text-[10px] text-zinc-500 font-bold mt-1 uppercase leading-snug">${a.message}</p>
+                        </div>
+                    `;
+                }).join('');
+            }
+        } catch(e) {}
+    }
+
+    async function loadSystemSafety() {
+        try {
+            const [statusRes, metricsRes] = await Promise.all([fetch('/system/status'), fetch('/system/safety-metrics')]);
+            if (!statusRes.ok || !metricsRes.ok) return;
+            const status = await statusRes.json();
+            const metrics = await metricsRes.json();
+            
+            document.getElementById('soc-system-mode').textContent = status.system_mode || 'NORMAL';
+            document.getElementById('soc-circuit-state').textContent = status.circuit_breaker_state || 'CLOSED';
+            document.getElementById('soc-kill-switch').textContent = status.kill_switch_status ? 'ENABLED' : 'DISABLED';
+            document.getElementById('soc-fallback-count').textContent = String(metrics.fallback_count || 0);
+
+            // Conditional styling for statuses
+            const mode = document.getElementById('soc-system-mode');
+            mode.className = `text-lg font-black ${status.system_mode === 'NORMAL' ? 'text-black' : 'text-zinc-500 underline'}`;
+            
+            const breaker = document.getElementById('soc-circuit-state');
+            breaker.className = `text-lg font-black ${status.circuit_breaker_state === 'CLOSED' ? 'text-black' : 'text-black underline decoration-4'}`;
+        } catch (e) {}
+    }
+
+    initSocCharts();
+    setInterval(() => {
+        loadTimeline();
+        loadAlerts();
+        loadSystemSafety();
+    }, 2000);
+    
+    loadTimeline();
+    loadAlerts();
+    loadSystemSafety();
+</script>
+{% endblock %}

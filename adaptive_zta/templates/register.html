@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provision Access - Argent Sentinel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #fff; }
+        .cyber-input {
+            border: 1px solid #000;
+            background: #fff;
+            transition: all 0.1s ease;
+            border-radius: 0;
+        }
+        .cyber-input:focus {
+            outline: none;
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+        }
+        .cyber-btn {
+            background: #000;
+            color: #fff;
+            transition: all 0.1s ease;
+            border-radius: 0;
+            font-weight: 900;
+        }
+        .cyber-btn:hover {
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.2);
+            transform: translate(-1px, -1px);
+        }
+    </style>
+</head>
+<body class="bg-white min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-md w-full">
+
+        <!-- Card -->
+        <div class="bg-white p-2">
+            <div class="text-center mb-12">
+                <h2 class="text-2xl font-black text-black uppercase tracking-widest">ACCESS_PROVISIONING</h2>
+                <p class="text-[10px] text-zinc-400 mt-2 font-black uppercase tracking-[0.2em]">NEW_OPERATOR_ONBOARDING_V1</p>
+            </div>
+
+            <form id="register-form" class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">FULL_IDENTITY_NAME</label>
+                    <input id="register-name" type="text" placeholder="E.G. ALEXANDER VANCE" class="cyber-input w-full px-4 py-3 text-[10px] font-bold uppercase tracking-wider" required>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">CORPORATE_EMAIL</label>
+                    <input id="register-email" type="email" placeholder="NAME@ENTERPRISE.COM" class="cyber-input w-full px-4 py-3 text-[10px] font-bold uppercase tracking-wider" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">DEPARTMENT</label>
+                        <input id="register-department" type="text" value="THREAT_OPS" class="cyber-input w-full px-4 py-3 text-[10px] font-bold uppercase tracking-wider" required>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">INITIAL_ROLE</label>
+                        <input type="text" value="ADMINISTRATOR" class="w-full px-4 py-3 text-[10px] bg-zinc-50 border border-zinc-200 text-zinc-400 font-black uppercase" disabled>
+                    </div>
+                </div>
+                
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">SECURITY_PASSPHRASE</label>
+                    <input id="register-passphrase" type="password" minlength="8" placeholder="MINIMUM 8 CHARACTERS" class="cyber-input w-full px-4 py-3 text-sm" required>
+                </div>
+
+                <div id="register-error" class="hidden text-[9px] font-black text-white bg-black border border-black px-4 py-3 tracking-widest uppercase mb-4"></div>
+                
+                <button type="submit" class="cyber-btn w-full py-5 px-6 font-black text-[11px] uppercase tracking-[0.3em] flex items-center justify-center gap-4 mt-8">
+                    <span>PROVISION_PROFILE</span>
+                    <svg class="w-5 h-5 rounded-full border-2 border-white p-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </button>
+            </form>
+            
+            <div class="mt-10 pt-10 border-t border-black text-center">
+                <a href="/login" class="text-[9px] font-black text-black hover:underline uppercase tracking-widest flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    RETURN_TO_LOGIN
+                </a>
+            </div>
+        </div>
+        
+        <p class="mt-8 text-center text-[9px] font-black text-zinc-200 uppercase tracking-[0.4em]">SENTINEL_ZERO_TRUST_Vanguard_Core // 2026</p>
+    </div>
+
+    <script>
+        const registerParams = new URLSearchParams(window.location.search);
+        const prefillEmail = registerParams.get('email');
+        if (prefillEmail) {
+            const emailInput = document.getElementById('register-email');
+            if (emailInput) emailInput.value = prefillEmail;
+        }
+
+        document.getElementById('register-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const payload = {
+                full_name: document.getElementById('register-name').value.trim(),
+                email: document.getElementById('register-email').value.trim().toLowerCase(),
+                department: document.getElementById('register-department').value.trim(),
+                passphrase: document.getElementById('register-passphrase').value
+            };
+            const errorBox = document.getElementById('register-error');
+            errorBox.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/iam/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || 'Provisioning failed');
+                }
+                const user = await res.json();
+                sessionStorage.setItem('argent_auth', 'active');
+                sessionStorage.setItem('argent_role', user.role);
+                const principal = user.user_id || user.email;
+                document.cookie = 'argent_user_id=' + encodeURIComponent(principal) + '; path=/; SameSite=Lax';
+                const next = registerParams.get('next');
+                window.location.assign(next ? decodeURIComponent(next) : '/ui');
+            } catch (error) {
+                errorBox.textContent = error.message.toUpperCase();
+                errorBox.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

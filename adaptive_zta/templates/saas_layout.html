@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Argent Sentinel{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { 
+                        sans: ['Inter', 'sans-serif'], 
+                        mono: ['JetBrains Mono', 'monospace'], 
+                    },
+                    colors: {
+                        sentinel: {
+                            50: '#f9fafb',
+                            100: '#f3f4f6',
+                            200: '#e5e7eb',
+                            500: '#71717a',
+                            600: '#52525b',
+                            700: '#3f3f46',
+                            800: '#27272a',
+                            900: '#18181b',
+                            950: '#09090b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --app-bg: #fafafa;
+            --sidebar-bg: #ffffff;
+            --header-bg: #ffffff;
+            --surface: #ffffff;
+            --border: #eaeaea;
+            --text-main: #000000;
+            --text-muted: #71717a;
+            --primary: #000000;
+            --accent: #18181b;
+        }
+
+        body {
+            background-color: var(--app-bg);
+            color: var(--text-main);
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+
+        .enterprise-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .enterprise-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border-color: #000000;
+        }
+
+        .cyber-input {
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            color: var(--text-main);
+            transition: all 0.15s ease;
+        }
+
+        .cyber-input:focus {
+            outline: none;
+            border-color: #000000;
+            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .cyber-btn {
+            border-radius: 4px;
+            background: #000000;
+            color: #ffffff;
+            font-weight: 700;
+            transition: all 0.15s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 10px;
+        }
+
+        .cyber-btn:hover { background: #18181b; transform: translateY(-1px); }
+        .cyber-btn:active { transform: translateY(0); }
+
+        .cyber-badge {
+            background: #f1f5f9;
+            color: #475569;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .cyber-table-header {
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .cyber-table-row {
+            border-bottom: 1px solid #f1f5f9;
+            transition: background 0.1s ease;
+        }
+
+        .cyber-table-row:hover {
+            background: #f8fafc;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .nav-link {
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        
+        .nav-link.active {
+            background-color: #f4f4f5;
+            color: #000000 !important;
+            font-weight: 800;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background-color: #000000;
+        }
+
+        /* Chart overrides for Enterprise look */
+        .chart-container { position: relative; width: 100%; height: 100%; }
+
+        /* Smooth page transitions */
+        .page-enter {
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="flex h-screen overflow-hidden selection:bg-sentinel-100 selection:text-sentinel-900">
+    <script>
+        (function restoreUiAuthFailSafe() {
+            const cookieAuth = document.cookie
+                .split(';')
+                .map((part) => part.trim())
+                .find((part) => part.startsWith('argent_user_id='));
+
+            if (cookieAuth && !sessionStorage.getItem('argent_auth')) {
+                sessionStorage.setItem('argent_auth', 'active');
+            }
+
+            if (!cookieAuth && sessionStorage.getItem('argent_auth')) {
+                sessionStorage.removeItem('argent_auth');
+                sessionStorage.removeItem('argent_role');
+            }
+        })();
+    </script>
+    {% set u = request.state.platform_user %}
+    {% set role = u.role if u else 'ReadOnly' %}
+    {% set is_admin = role == 'Administrator' %}
+    {% set can_policy = role in ['Administrator', 'Analyst'] %}
+
+    <!-- Sidebar -->
+    <nav class="hidden lg:flex lg:w-64 bg-white flex-col z-40 relative border-r border-black">
+        <div class="h-16 px-6 flex items-center gap-3 border-b border-black">
+            <div class="w-8 h-8 rounded bg-black flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <div>
+                <div class="font-black text-[11px] tracking-widest text-black leading-none uppercase">SENTINEL</div>
+                <div class="text-[9px] text-zinc-400 font-mono tracking-widest mt-1">CONTEXT v2.0</div>
+            </div>
+        </div>
+
+        <div class="px-3 py-6 space-y-1 overflow-y-auto flex-1">
+            <div class="mb-2 px-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Main Menu</div>
+            <a href="/ui" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'dashboard' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                DASHBOARD
+            </a>
+            <a href="/soc/dashboard" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'soc' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                THREAT OPS
+            </a>
+            <a href="/ui/rules" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'rules' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04M12 2.944V22m0-19.056c2.81 0 5.46 1.057 7.477 2.944a11.957 11.957 0 012.523 7.056c0 6.627-5.373 12-12 12s-12-5.373-12-12c0-3.159 1.222-6.028 3.21-8.196L12 2.944z"></path></svg>
+                POLICY
+            </a>
+
+            <div class="mt-8 mb-2 px-3 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Intelligence</div>
+            <a href="/ui/shadow" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'shadow' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                SHADOW MODEL
+            </a>
+            <a href="/ui/developer" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'developer' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                DEV CONSOLE
+            </a>
+
+            <div class="mt-8 mb-2 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">System</div>
+            <a href="/ui/iam" class="nav-link flex items-center gap-3 px-3 py-2 text-xs font-bold rounded text-zinc-500 hover:text-black hover:bg-zinc-50 {% if active_page == 'iam' %}active{% endif %}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                IAM MANAGEMENT
+            </a>
+        </div>
+
+        <div class="p-4 border-t border-black">
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-zinc-50 transition-colors cursor-pointer group">
+                <img src="https://ui-avatars.com/api/?name={{ u.full_name | replace(' ', '+') if u else 'SysAdmin' }}&background=000&color=fff" class="w-9 h-9 rounded ring-1 ring-black/10 group-hover:ring-black transition-all">
+                <div class="flex-1 min-w-0">
+                    <p class="text-[11px] font-black text-black truncate">{{ u.full_name if u else 'Admin User' }}</p>
+                    <p class="text-[9px] text-zinc-400 font-bold truncate">{{ role | upper }}</p>
+                </div>
+                <button onclick="sessionStorage.removeItem('argent_auth'); document.cookie='argent_user_id=; path=/; Max-Age=0;'; window.location.href='/';" class="text-zinc-400 hover:text-black transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col min-w-0 bg-[#fafafa] overflow-hidden">
+        <!-- Header -->
+        <header class="h-16 px-8 flex items-center justify-between border-b border-black bg-white/80 backdrop-blur-md z-30 sticky top-0">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                    <span>ARGENT</span>
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                    <span class="text-black">{% block header_title %}OVERVIEW{% endblock %}</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <!-- Search Mockup -->
+                <div class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border border-black rounded text-zinc-500 focus-within:ring-2 focus-within:ring-black/5 transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" placeholder="GLOBAL_SEARCH" class="bg-transparent border-none text-[10px] font-bold focus:ring-0 w-48 placeholder:text-zinc-300">
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <select id="global-tenant-select" class="appearance-none bg-white border border-black rounded text-[10px] font-black px-4 py-1.5 pr-8 cursor-pointer uppercase tracking-widest shadow-sm">
+                        <option value="default">DEFAULT TENANT</option>
+                    </select>
+                </div>
+                
+                <div class="h-8 w-px bg-black mx-1"></div>
+                
+                <button class="relative p-2 text-zinc-400 hover:text-black transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                    <span class="absolute top-2 right-2 w-1.5 h-1.5 bg-black rounded-full border border-white"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <main class="flex-1 overflow-y-auto p-8 page-enter">
+            <div class="mx-auto w-full max-w-[1600px]">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Component -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+    <script>
+        async function loadGlobalConfig() {
+            try {
+                const d = await fetch('/soc/tenants/comparison').then(r=>r.json());
+                if(d.tenants && d.tenants.length > 0) {
+                    const sel = document.getElementById('global-tenant-select');
+                    sel.innerHTML = d.tenants.map(t => `<option value="${t.tenant_id}">${t.tenant_name || t.tenant_id} Workspace</option>`).join('');
+                }
+            } catch(e) {}
+        }
+        loadGlobalConfig();
+
+        function showToast(message, type = 'error') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const isError = type === 'error';
+            
+            toast.className = `transform translate-y-10 opacity-0 transition-all duration-300 pointer-events-auto flex items-center gap-3 px-5 py-3 rounded border shadow-xl bg-white min-w-[300px] ${isError ? 'border-black' : 'border-zinc-200'}`;
+            
+            const icon = isError 
+                ? `<div class="w-8 h-8 rounded bg-black text-white flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>`
+                : `<div class="w-8 h-8 rounded bg-white text-black border border-black flex items-center justify-center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>`;
+
+            toast.innerHTML = `${icon} <div><p class="text-[10px] font-black text-black uppercase tracking-widest">${isError ? 'EXCEPTION' : 'SUCCESS'}</p><p class="text-[11px] text-zinc-500 font-bold">${message.toUpperCase()}</p></div>`;
+            
+            container.appendChild(toast);
+            requestAnimationFrame(() => { toast.classList.remove('translate-y-10', 'opacity-0'); });
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // Global fetch interceptor
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            try {
+                const response = await originalFetch.apply(this, arguments);
+                if (!response.ok && response.status >= 500) showToast(`Server Exception: ${response.status}`, 'error');
+                return response;
+            } catch (error) {
+                showToast(`Connection error`, 'error');
+                throw error;
+            }
+        };
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

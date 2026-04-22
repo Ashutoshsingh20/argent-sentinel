@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - Argent Sentinel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #fff; }
+        .cyber-input {
+            border: 1px solid #000;
+            background: #fff;
+            transition: all 0.1s ease;
+            border-radius: 0;
+        }
+        .cyber-input:focus {
+            outline: none;
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+        }
+        .cyber-btn {
+            background: #000;
+            color: #fff;
+            transition: all 0.1s ease;
+            border-radius: 0;
+            font-weight: 900;
+        }
+        .cyber-btn:hover {
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.2);
+            transform: translate(-1px, -1px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-md w-full">
+        <!-- Logo -->
+        <div class="flex items-center justify-center gap-3 mb-10">
+            <div class="w-10 h-10 bg-black text-white flex items-center justify-center">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <span class="font-black text-2xl tracking-widest text-black">ARGENT<span class="underline decoration-4">SENTINEL</span></span>
+        </div>
+
+        <!-- Card -->
+        <div class="bg-white border-2 border-black p-10">
+            <div class="text-center mb-10">
+                <h2 class="text-lg font-black text-black uppercase tracking-widest">SYSTEM_AUTHENTICATION</h2>
+                <p class="text-[9px] text-zinc-400 mt-2 font-black uppercase tracking-widest">ZERO_TRUST_CONTROL_PLANE_V5</p>
+            </div>
+
+            <form id="login-form" class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">IAM_IDENTIFIER</label>
+                    <input id="login-user" type="email" autocomplete="username" placeholder="NAME@ENTERPRISE.COM" class="cyber-input w-full px-4 py-3 text-[10px] font-bold uppercase tracking-wider" required>
+                </div>
+                
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center px-1">
+                        <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">SECRET_KEY</label>
+                        <a href="#" class="text-[9px] font-black text-black hover:underline uppercase tracking-widest">RESET</a>
+                    </div>
+                    <input id="login-passphrase" type="password" autocomplete="current-password" placeholder="••••••••••••" class="cyber-input w-full px-4 py-3 text-sm" required>
+                </div>
+
+                <div id="login-error" class="hidden text-[9px] font-black text-white bg-black border border-black px-4 py-3 tracking-widest uppercase"></div>
+                
+                <button id="login-submit" type="submit" class="cyber-btn w-full py-4 px-6 font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 mt-4">
+                    <span>INITIATE_SESSION</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
+            </form>
+            
+            <div class="mt-10 pt-10 border-t border-black text-center space-y-4">
+                <p class="text-[9px] text-zinc-400 font-bold uppercase tracking-tighter">RESTRICTED_ENVIRONMENT. UNAUTHORIZED_ACCESS_IS_MONITORED.</p>
+                <div class="flex items-center justify-center gap-6">
+                    <a href="/register" class="text-[9px] font-black text-black hover:underline uppercase tracking-widest">REQUEST_ACCESS</a>
+                    <span class="w-1.5 h-1.5 bg-black"></span>
+                    <a href="#" class="text-[9px] font-black text-zinc-400 hover:text-black uppercase tracking-widest">STATUS_PAGE</a>
+                </div>
+            </div>
+        </div>
+        
+        <p class="mt-8 text-center text-[9px] font-black text-zinc-200 uppercase tracking-[0.4em]">SENTINEL_ZERO_TRUST_Vanguard_Core // 2026</p>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const email = document.getElementById('login-user').value.trim().toLowerCase();
+            const passphrase = document.getElementById('login-passphrase').value;
+            const errorBox = document.getElementById('login-error');
+            const submitBtn = document.getElementById('login-submit');
+            
+            errorBox.classList.add('hidden');
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+
+            try {
+                if (!email || !passphrase) throw new Error('Credentials required.');
+                
+                const res = await fetch('/api/iam/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, passphrase })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    let errMsg = data.detail || 'Authentication failed';
+                    
+                    if (typeof errMsg === 'string' && errMsg.toLowerCase().includes('unknown iam user')) {
+                        const next = encodeURIComponent('/login' + window.location.search);
+                        window.location.href = '/register?email=' + encodeURIComponent(email) + '&next=' + next;
+                        return;
+                    }
+                    throw new Error(errMsg);
+                }
+
+                const user = await res.json();
+                sessionStorage.setItem('argent_auth', 'active');
+                sessionStorage.setItem('argent_role', user.role);
+                
+                const principal = user.user_id || user.email;
+                document.cookie = 'argent_user_id=' + encodeURIComponent(principal) + '; path=/; SameSite=Lax';
+                
+                const next = new URLSearchParams(window.location.search).get('next');
+                window.location.assign(next || '/ui');
+            } catch (error) {
+                errorBox.textContent = error.message.toUpperCase();
+                errorBox.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+            }
+        });
+    </script>
+</body>
+</html>

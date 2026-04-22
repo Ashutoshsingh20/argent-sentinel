@@ -1,0 +1,221 @@
+# Argent Sentinel — Default Policy Ruleset
+# Version: 1.0.0
+# Format: Each rule has a unique id, priority (higher = evaluated first),
+#         an action (ALLOW | RATE_LIMIT | ISOLATE), a list of conditions,
+#         a conflict_weight (used when multiple rules match), and metadata.
+#
+# Operators: eq, neq, gt, gte, lt, lte, in, not_in, contains, regex
+# Fields available: geo_anomaly_flag, failed_auth_count, protocol_type,
+#                   entity_type, traversal_depth, api_rate, payload_size,
+#                   session_duration, trust_score, cloud_env, is_attack
+#
+# Conflict resolution: when multiple rules fire on the same event,
+#   the most severe action wins (ISOLATE > RATE_LIMIT > ALLOW).
+#   conflict_weight breaks ties between equal-severity matches.
+
+version: "1.0.0"
+
+rules:
+
+  # ─────────────────────────────────────────────
+  # CRITICAL RULES  (priority 90–100)
+  # ─────────────────────────────────────────────
+
+  - id: GEO-AUTH-ISOLATE
+    priority: 100
+    conflict_weight: 1.0
+    action: ISOLATE
+    reason: "Geo-anomaly combined with repeated auth failures — credential stuffing with impossible travel"
+    conditions:
+      - field: geo_anomaly_flag
+        op: eq
+        value: 1
+      - field: failed_auth_count
+        op: gte
+        value: 3
+    tags: [credential_stuffing, geo_anomaly, critical]
+
+  - id: SSH-EXFIL-ISOLATE
+    priority: 98
+    conflict_weight: 0.9
+    action: ISOLATE
+    reason: "SSH protocol from non-service-account with deep traversal — lateral movement / exfiltration risk"
+    conditions:
+      - field: protocol_type
+        op: eq
+        value: SSH
+      - field: entity_type
+        op: not_in
+        value: [service_account]
+      - field: traversal_depth
+        op: gte
+        value: 8
+    tags: [lateral_movement, ssh, critical]
+
+  - id: BURST-PAYLOAD-ISOLATE
+    priority: 95
+    conflict_weight: 0.85
+    action: ISOLATE
+    reason: "Massive payload with geo anomaly — data exfiltration pattern"
+    conditions:
+      - field: payload_size
+        op: gte
+        value: 4000
+      - field: geo_anomaly_flag
+        op: eq
+        value: 1
+    tags: [exfiltration, payload, critical]
+
+  - id: TRUST-FLOOR-ISOLATE
+    priority: 90
+    conflict_weight: 0.8
+    action: ISOLATE
+    reason: "Trust score fell below isolation floor"
+    conditions:
+      - field: trust_score
+        op: lt
+        value: 48
+    tags: [trust_floor, model_decision]
+
+  # ─────────────────────────────────────────────
+  # HIGH RISK RULES  (priority 70–89)
+  # ─────────────────────────────────────────────
+
+  - id: SSH-NON-SA-RATE-LIMIT
+    priority: 80
+    conflict_weight: 0.7
+    action: RATE_LIMIT
+    reason: "SSH protocol from non-service-account entity — restricting access"
+    conditions:
+      - field: protocol_type
+        op: eq
+        value: SSH
+      - field: entity_type
+        op: not_in
+        value: [service_account]
+    tags: [ssh, protocol_abuse, high]
+
+  - id: HIGH-AUTH-FAILURES-RATE-LIMIT
+    priority: 78
+    conflict_weight: 0.65
+    action: RATE_LIMIT
+    reason: "Repeated authentication failures — potential credential stuffing"
+    conditions:
+      - field: failed_auth_count
+        op: gte
+        value: 3
+    tags: [auth_failure, credential_stuffing, high]
+
+  - id: CROSS-CLOUD-TRAVERSAL-RATE-LIMIT
+    priority: 75
+    conflict_weight: 0.6
+    action: RATE_LIMIT
+    reason: "Deep cross-cloud traversal depth — lateral movement indicator"
+    conditions:
+      - field: traversal_depth
+        op: gte
+        value: 8
+    tags: [traversal, lateral_movement, high]
+
+  - id: HTTP-PLAIN-GEO-RATE-LIMIT
+    priority: 72
+    conflict_weight: 0.55
+    action: RATE_LIMIT
+    reason: "Unencrypted HTTP with geo anomaly — suspicious data path"
+    conditions:
+      - field: protocol_type
+        op: eq
+        value: HTTP
+      - field: geo_anomaly_flag
+        op: eq
+        value: 1
+    tags: [protocol_abuse, geo_anomaly, high]
+
+  - id: TRUST-BAND-RATE-LIMIT
+    priority: 70
+    conflict_weight: 0.5
+    action: RATE_LIMIT
+    reason: "Trust score in rate-limit band"
+    conditions:
+      - field: trust_score
+        op: gte
+        value: 48
+      - field: trust_score
+        op: lt
+        value: 65
+    tags: [trust_band, model_decision]
+
+  # ─────────────────────────────────────────────
+  # MEDIUM RISK RULES  (priority 40–69)
+  # ─────────────────────────────────────────────
+
+  - id: HIGH-API-RATE
+    priority: 60
+    conflict_weight: 0.4
+    action: RATE_LIMIT
+    reason: "Elevated API request rate — potential scraping or DoS"
+    conditions:
+      - field: api_rate
+        op: gte
+        value: 300
+    tags: [api_abuse, medium]
+
+  - id: SA-BUSINESS-HOURS-CAUTION
+    priority: 50
+    conflict_weight: 0.3
+    action: RATE_LIMIT
+    reason: "Service account active during business hours with auth failures"
+    conditions:
+      - field: entity_type
+        op: eq
+        value: service_account
+      - field: failed_auth_count
+        op: gte
+        value: 1
+    tags: [insider_threat, service_account, medium]
+
+  - id: LONG-SESSION-SUSPICIOUS
+    priority: 45
+    conflict_weight: 0.25
+    action: RATE_LIMIT
+    reason: "Abnormally long session duration — persistent session indicator"
+    conditions:
+      - field: session_duration
+        op: gte
+        value: 3000
+      - field: geo_anomaly_flag
+        op: eq
+        value: 1
+    tags: [persistent_session, medium]
+
+  # ─────────────────────────────────────────────
+  # ALLOW RULES  (priority 1–39)
+  # ─────────────────────────────────────────────
+
+  - id: HTTPS-CLEAN-ALLOW
+    priority: 20
+    conflict_weight: 0.1
+    action: ALLOW
+    reason: "HTTPS with no anomaly signals — normal traffic"
+    conditions:
+      - field: protocol_type
+        op: eq
+        value: HTTPS
+      - field: geo_anomaly_flag
+        op: eq
+        value: 0
+      - field: failed_auth_count
+        op: eq
+        value: 0
+    tags: [clean_traffic, allow]
+
+  - id: TRUST-HIGH-ALLOW
+    priority: 10
+    conflict_weight: 0.05
+    action: ALLOW
+    reason: "Trust score above allow threshold — model confident"
+    conditions:
+      - field: trust_score
+        op: gte
+        value: 65
+    tags: [trust_floor, model_decision, allow]

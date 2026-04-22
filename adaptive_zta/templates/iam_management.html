@@ -1,0 +1,243 @@
+{% extends "saas_layout.html" %}
+
+{% block title %}IAM Operations - Argent Sentinel{% endblock %}
+{% block header_title %}Identity & Governance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Provisioning Section -->
+    <div class="enterprise-card bg-black p-8">
+        <div class="flex justify-between items-start mb-8">
+            <div>
+                <h3 class="text-sm font-black text-white uppercase tracking-widest">PROVISION_NEW_OPERATOR_IDENTITY</h3>
+                <p class="text-[9px] text-zinc-400 font-bold mt-1 uppercase">ADMINISTRATIVE_IAM_ONBOARDING_PROTOCOL</p>
+            </div>
+            <div class="px-2 py-1 border border-zinc-800 text-[9px] font-black text-zinc-500 tracking-widest uppercase">LEVEL_1_AUTH_REQUIRED</div>
+        </div>
+
+        <form id="provision-form" class="grid grid-cols-1 md:grid-cols-3 gap-6 gap-y-8">
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">FULL_NAME</label>
+                <input id="prov-name" type="text" placeholder="IDENTITY_NAME" class="w-full bg-zinc-900 border border-zinc-800 px-3 py-3 text-[10px] text-white font-black uppercase focus:border-white outline-none transition-colors" required>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">EMAIL_IDENTITY_ID</label>
+                <input id="prov-email" type="email" placeholder="NAME@ENTERPRISE.COM" class="w-full bg-zinc-900 border border-zinc-800 px-3 py-3 text-[10px] text-white font-black uppercase focus:border-white outline-none transition-colors" required>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">DEPT_CODE</label>
+                <input id="prov-dept" type="text" value="THREAT_OPS" class="w-full bg-zinc-900 border border-zinc-800 px-3 py-3 text-[10px] text-white font-black uppercase focus:border-white outline-none transition-colors" required>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">ASSIGNED_ACCESS_ROLE</label>
+                <select id="prov-role" class="w-full bg-zinc-900 border border-zinc-800 px-3 py-3 text-[10px] text-white font-black uppercase focus:border-white outline-none transition-colors">
+                    {% for role in roles %}
+                    <option value="{{ role }}">{{ role | upper }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">SECURITY_PASSPHRASE_SECRET</label>
+                <input id="prov-pass" type="password" placeholder="••••••••" class="w-full bg-zinc-900 border border-zinc-800 px-3 py-3 text-[10px] text-white font-black outline-none focus:border-white transition-colors" required>
+            </div>
+            <div class="flex items-end">
+                <button type="button" onclick="provisionOperator()" id="btn-provision" class="w-full bg-white text-black py-3.5 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-zinc-200 transition-all shadow-lg flex items-center justify-center gap-2">
+                    PROVISION_PROFILE
+                    <svg class="w-4 h-4 rounded-full border border-black p-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Platform Operators Section -->
+    <div class="enterprise-card bg-white">
+        <div class="px-8 py-6 border-b border-slate-50 flex justify-between items-center">
+            <div>
+                <h3 class="text-sm font-black text-black uppercase tracking-widest">PLATFORM_OPERATORS_IDENTITY</h3>
+                <p class="text-[9px] text-zinc-400 font-bold mt-1 uppercase">INSTITUTIONAL_ACCESS_GOVERNANCE_CONTROL</p>
+            </div>
+            <span class="px-2 py-1 rounded bg-black text-[9px] font-black text-white tracking-widest uppercase">ADMIN_CONTROLLED</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-zinc-50">
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">OPERATOR_PROFILE</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">DEPARTMENT</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">ACCESS_ROLE</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">GOVERNANCE_LOG</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black text-right">SYNC</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    {% for user in users %}
+                    <tr class="hover:bg-slate-50/30 transition-colors">
+                        <td class="px-8 py-5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded bg-black flex items-center justify-center text-white font-black text-xs">
+                                    {{ user.full_name[:1] }}
+                                </div>
+                                <div>
+                                    <div class="text-[11px] font-black text-black uppercase tracking-tight">{{ user.full_name }}</div>
+                                    <div class="text-[9px] text-zinc-400 font-mono mt-0.5 uppercase">{{ user.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-8 py-5">
+                            <span class="text-xs font-medium text-slate-600">{{ user.department }}</span>
+                        </td>
+                        <td class="px-8 py-5">
+                            <select id="role-{{ user.id }}" class="cyber-input px-3 py-1.5 rounded text-[9px] font-black text-black bg-white border border-black min-w-[140px] uppercase">
+                                {% for role in roles %}
+                                <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role | upper }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="px-8 py-5">
+                            <div class="text-[10px] text-black font-black uppercase">
+                                {{ user.role_updated_at.strftime('%m.%d.%y // %H:%M') if user.role_updated_at else 'INITIAL_PROVISION' }}
+                            </div>
+                            <div class="text-[9px] text-zinc-400 font-black mt-1 uppercase tracking-tighter">OPERATOR: ${user.role_updated_by or 'SYSTEM'}</div>
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <button onclick="updateRole('{{ user.id }}')" class="cyber-btn px-4 py-2 text-[10px] uppercase tracking-widest font-bold">
+                                Update
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Shadow Promotion Ledger Section -->
+    <div class="enterprise-card bg-white">
+        <div class="px-8 py-6 border-b border-black bg-black">
+            <h3 class="text-sm font-black text-white uppercase tracking-widest">SHADOW_INTELLIGENCE_LIFECYCLE</h3>
+            <p class="text-[9px] text-white/60 font-bold mt-1 uppercase">PROMOTION_LEDGER_ADVERSARIAL_BUFFER_AUDIT</p>
+        </div>
+
+        <div class="overflow-x-auto">
+            {% if promotions %}
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-zinc-50">
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">EPOCH_TS</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">PROMOTED_F1</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">MAIN_F1</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">SHADOW_F1</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black text-right">DELTA_MARGIN</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    {% for event in promotions %}
+                    <tr class="hover:bg-zinc-50 transition-colors">
+                        <td class="px-8 py-5 text-[10px] font-black text-zinc-500 uppercase">
+                            {{ event.promoted_at.strftime('%Y-%m-%d // %H:%M:%S') if event.promoted_at else '--' }}
+                        </td>
+                        <td class="px-8 py-5">
+                            <span class="px-2 py-1 rounded bg-black text-white font-mono text-[10px] font-black border border-black">
+                                {{ '%.4f'|format(event.promoted_f1) }}
+                            </span>
+                        </td>
+                        <td class="px-8 py-5 text-[10px] font-black text-zinc-400">
+                            {{ '%.4f'|format(event.main_f1) if event.main_f1 is not none else '0.0000' }}
+                        </td>
+                        <td class="px-8 py-5 text-[10px] font-black text-zinc-400">
+                            {{ '%.4f'|format(event.shadow_f1) if event.shadow_f1 is not none else '0.0000' }}
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            <span class="text-[10px] font-black text-black underline decoration-2">+{{ '%.4f'|format(event.margin) if event.margin is not none else '0.0000' }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="py-12 text-center text-zinc-400 text-[10px] font-black uppercase italic tracking-widest">NO_PROMOTION_EVENTS_RECORDED_BY_VANGUARD_AUDIT.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function updateRole(userId) {
+        const select = document.getElementById(`role-${userId}`);
+        const btn = event.currentTarget;
+        
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+
+        try {
+            const res = await fetch('/api/iam/update_role', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, role: select.value })
+            });
+            if (!res.ok) throw new Error('Update failed');
+            if (typeof showToast === 'function') showToast('IAM Profile Governance Updated', 'success');
+        } catch (error) {
+            if (typeof showToast === 'function') showToast('Administrative Action Denied', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    }
+
+    async function provisionOperator() {
+        const btn = document.getElementById('btn-provision');
+        
+        const payload = {
+            full_name: document.getElementById('prov-name').value.trim(),
+            email: document.getElementById('prov-email').value.trim(),
+            department: document.getElementById('prov-dept').value.trim(),
+            role: document.getElementById('prov-role').value,
+            passphrase: document.getElementById('prov-pass').value,
+            org_id: "default",
+            org_name: "Default Organization",
+            allowed_clouds: ["AWS", "Azure", "GCP"]
+        };
+
+        if (!payload.full_name || !payload.email || !payload.passphrase) {
+            if (typeof showToast === 'function') showToast('Identity Fields Incomplete', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+
+        try {
+            const res = await fetch('/api/iam/provision', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                let errorMsg = 'Provisioning failed';
+                if (data.detail) {
+                    if (Array.isArray(data.detail)) {
+                        errorMsg = data.detail.map(d => d.msg).join(', ');
+                    } else {
+                        errorMsg = data.detail;
+                    }
+                }
+                throw new Error(errorMsg);
+            }
+
+            if (typeof showToast === 'function') showToast('Organization & Admin Identity Provisioned', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            if (typeof showToast === 'function') showToast(error.message.toUpperCase(), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,228 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script, before PyInstaller builds the exe
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+#   For a library or binary, you wish to ignore their .python-version file.
+#   For projects (including web apps), you probably want to check it in.
+# .python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to check Pipfile.lock into git.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or even
+#   fail to install of them.
+#Pipfile.lock
+
+# poetry
+#   Similar to Pipfile.lock, it is generally recommended to check poetry.lock in for applications.
+#   Stay settled with a clean lock file is helpful for reproducible builds.
+#poetry.lock
+
+# pdm
+#   Similar to Pipfile.lock, it is generally recommended to check pdm.lock in for applications.
+#pdm.lock
+#   pdm build tool configuration file
+.pdm-python
+
+# PEP 582; used by e.g. github.com/pdm-project/pdm
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv 2/
+.venv_pdf/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# OS junk
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# Environments
+.env
+.venv*
+env/
+venv/
+
+# Project Specific - Diagnostic & Temp Files
+*.log
+*_log.txt
+extracted_text.txt
+final_verify_log.txt
+server_final.log
+vanguard_live.log
+diagnostic_log.txt
+uvicorn_direct.log
+err.log
+out.log
+server_8001.log
+startup_log.txt
+generator_log.txt
+ingestor_log.txt
+verify_output.txt
+
+# Directories to ignore
+tmp/
+adaptive_zta/tmp/
+adaptive_zta/__pycache__/
+phase5/__pycache__/
+adapters/__pycache__/
+adaptive_zta/paper/
+
+# Papers and Research Documents
+*.pdf
+paper/
+
+# Development & Patch Scripts (not core)
+patch_*.py
+rewrite_*.py
+debug_*.py
+mock_*.py
+test_*.py
+fastapi_import_test.py
+seed_db.py
+fix_*.py
+add_toast.py
+brutalist.py
+forced_cycle_check*.py
+replay_signal_evolution_probe.py
+replay_signal_probe.py
+retrain_overlap_model.py
+validate_system.py
+validate_*.py
+replay_*.py
+
+# Data and Databases
+*.db
+*.db-shm
+*.db-wal
+outputs/
+adaptive_zta/outputs/
+
+# Re-allow essential model artifacts
+!**/outputs/*.zip
+!**/outputs/*.joblib
+!**/outputs/*.json
+!**/outputs/*.png
+!**/outputs/plots/
+
+# VS Code
+.vscode/

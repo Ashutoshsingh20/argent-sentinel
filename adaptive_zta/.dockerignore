@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+tmp/
+outputs/*.csv
+outputs/*.jsonl
+outputs/*.db
+outputs/plots/
+*.ipynb

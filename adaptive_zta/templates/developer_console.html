@@ -1,0 +1,293 @@
+{% extends "saas_layout.html" %}
+
+{% block title %}Developer Console - Argent Sentinel{% endblock %}
+{% block header_title %}Simulation & Protocol Analysis{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Authentication Posture -->
+        <div class="enterprise-card p-8 bg-white flex flex-col">
+            <div class="flex justify-between items-center mb-10">
+                <div>
+                    <h3 class="text-sm font-black text-black uppercase tracking-widest">AUTHENTICATION_POSTURE</h3>
+                    <p class="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">BEARER_TOKEN_SIMULATION_V1</p>
+                </div>
+                <span id="auth-status" class="px-2 py-1 rounded bg-white text-[9px] font-black text-zinc-400 border border-zinc-200 uppercase tracking-widest">NO_ACTIVE_SESSION</span>
+            </div>
+            
+            <div class="space-y-6 flex-1">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Principal Identity String</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="entity-input" value="analyst-demo" class="cyber-input flex-1 px-4 py-2.5 rounded-xl text-sm font-mono text-slate-700 bg-slate-50 border border-slate-200">
+                        <button id="btn-session" onclick="startSession()" class="cyber-btn px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest min-w-[140px]">Initiate JWT</button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Step-Up Verification (MFA)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="mfa-input" placeholder="000000" class="cyber-input flex-1 px-4 py-2.5 rounded-xl text-sm font-mono tracking-[0.5em] text-center" disabled>
+                        <button id="btn-mfa" class="px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed min-w-[140px]" disabled>Verify OTP</button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center px-1">
+                        <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">ACTIVE_BEARER_TOKEN</label>
+                        <button onclick="clearToken()" class="text-[9px] font-black text-black hover:underline uppercase tracking-widest">PURGE_CONTEXT</button>
+                    </div>
+                    <textarea id="token-display" readonly placeholder="WAITING_FOR_SECURE_CONTEXT..." class="w-full h-24 cyber-input px-4 py-3 rounded text-[10px] font-mono text-white bg-black border-none resize-none"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cloud Action Studio -->
+        <div class="enterprise-card p-8 bg-white border-t-2 border-black">
+            <h3 class="text-sm font-black text-black uppercase tracking-widest mb-2">PROTOCOL_ACTION_STUDIO</h3>
+            <p class="text-[10px] text-zinc-400 font-bold mb-8 leading-relaxed uppercase">SIMULATE_NATIVE_CLOUD_PAYLOADS_FOR_NEURAL_SCRUTINY</p>
+
+            <div class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Provider Engine</label>
+                        <select id="cloud-provider" class="cyber-input w-full px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10">
+                            <option value="aws">AWS PrivateLink</option>
+                            <option value="azure">Azure Service Bus</option>
+                            <option value="gcp">GCP VPC Internal</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Resource Path</label>
+                        <input type="text" id="action-target" placeholder="e.g. s3/prod-bucket" class="cyber-input w-full px-4 py-2.5 rounded-xl text-sm font-mono text-slate-700 bg-slate-50 border border-slate-200" value="iam/user/admin-creds">
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Request Payload</label>
+                    <textarea id="action-payload" rows="5" class="w-full cyber-input px-4 py-3 rounded-xl text-[11px] font-mono text-slate-700 bg-slate-50 border border-slate-200 resize-none">{
+    "operation": "DeleteAccessKey",
+    "params": {
+        "UserName": "infrastructure-admin",
+        "Force": true
+    }
+}</textarea>
+                </div>
+                
+                <div class="flex items-center justify-between pt-4 border-t border-black">
+                    <div class="flex items-center gap-2">
+                        <div class="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></div>
+                        <span class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">ROUTING_VIA_SENTINEL_ML_OVERLAY</span>
+                    </div>
+                    <button onclick="runAction()" id="btn-fire" class="cyber-btn px-8 py-3 rounded text-[9px] font-black uppercase tracking-[0.2em] shadow-xl">
+                        FIRE_PROXY_PAYLOAD
+                    </button>
+                </div>
+                
+                <div id="action-response" class="hidden mt-6 overflow-hidden border border-black shadow-inner">
+                    <div class="bg-black px-4 py-2 flex justify-between items-center">
+                        <span class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">PLATFORM_RESPONSE</span>
+                        <span class="text-[9px] font-mono text-white">HTTP/1.1 200_OK</span>
+                    </div>
+                    <pre class="bg-black p-4 text-[10px] text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto uppercase" id="response-content"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Matrix -->
+    <div class="enterprise-card bg-white">
+        <div class="px-8 py-6 border-b border-zinc-100 flex justify-between items-center text-sm">
+            <div>
+                <h3 class="text-sm font-black text-black uppercase tracking-widest">CONSOLE_TELEMETRY_LEDGER</h3>
+                <p class="text-[9px] font-black text-zinc-400 mt-0.5 uppercase">REALTIME_SIMULATION_AUDIT_STREAM_Vanguard_V4</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">ENVIRONMENT</span>
+                <select id="data-filter" class="text-[9px] font-black text-black border border-black bg-zinc-50 rounded px-4 py-1.5 focus:ring-0 cursor-pointer uppercase">
+                    <option value="ALL">ALL_INSTANCES</option>
+                    <option value="SIM">SIMULATION_ONLY</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-zinc-50">
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">SYNCED_AT</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">ESTABLISHED_ENTITY</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black">PROTOCOL_VERDICT</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black text-center">TRUST_MGN</th>
+                        <th class="px-8 py-4 text-[9px] font-black text-black uppercase tracking-widest border-b border-black hidden md:table-cell">HEURISTIC_FORENSICS</th>
+                    </tr>
+                </thead>
+                <tbody id="decisions-body" class="divide-y divide-slate-50">
+                    <!-- Dynamic Stream -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let activeToken = "";
+    let currentSessionId = "";
+    
+    async function startSession() {
+        const eid = document.getElementById('entity-input').value || 'analyst-demo';
+        const btn = document.getElementById('btn-session');
+        btn.disabled = true;
+        btn.textContent = "SYNCHRONIZING";
+
+        try {
+            const res = await fetch('/auth/session/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: eid })
+            });
+            const data = await res.json();
+            
+            if (data.mfa_required) {
+                activeToken = data.access_token;
+                currentSessionId = data.session_id;
+                
+                const status = document.getElementById('auth-status');
+                status.textContent = 'MFA_PENDING';
+                status.className = 'px-2 py-1 rounded bg-zinc-100 text-[9px] font-black text-black border border-black uppercase tracking-widest underline';
+                
+                document.getElementById('mfa-input').disabled = false;
+                document.getElementById('mfa-input').placeholder = "CODE_REQUIRED";
+                
+                const mfaBtn = document.getElementById('btn-mfa');
+                mfaBtn.disabled = false;
+                mfaBtn.className = 'cyber-btn px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest min-w-[140px]';
+                mfaBtn.onclick = verifyMFA;
+            } else if (data.access_token) {
+                setAuthenticated(data.access_token);
+            }
+        } catch(e) {
+            if(typeof showToast === 'function') showToast('Handshake Denied', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Initiate JWT";
+        }
+    }
+    
+    async function verifyMFA() {
+        const code = document.getElementById('mfa-input').value;
+        if (!code) return;
+        const btn = document.getElementById('btn-mfa');
+        btn.disabled = true;
+        btn.textContent = "VERIFYING";
+
+        try {
+            const res = await fetch('/auth/step-up', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + activeToken
+                },
+                body: JSON.stringify({ otp_code: code })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setAuthenticated(activeToken);
+            } else {
+                if(typeof showToast === 'function') showToast('Invalid MFA Code', 'error');
+            }
+        } catch (e) { } finally {
+            btn.disabled = false;
+            btn.textContent = "Verify OTP";
+        }
+    }
+    
+    function setAuthenticated(token) {
+        document.getElementById('token-display').value = token;
+        const status = document.getElementById('auth-status');
+        status.textContent = 'SESSION_ACTIVE';
+        status.className = 'px-2 py-1 rounded bg-black text-[9px] font-black text-white uppercase tracking-widest shadow-xl';
+        document.getElementById('btn-session').textContent = 'REFRESH';
+        document.getElementById('mfa-input').disabled = true;
+        document.getElementById('btn-mfa').disabled = true;
+        document.getElementById('btn-mfa').className = 'px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed min-w-[140px]';
+    }
+
+    function clearToken() {
+        activeToken = "";
+        document.getElementById('token-display').value = "";
+        document.getElementById('entity-input').value = "";
+        const status = document.getElementById('auth-status');
+        status.textContent = 'NO_ACTIVE_SESSION';
+        status.className = 'px-2 py-1 rounded bg-white text-[9px] font-black text-zinc-400 border border-zinc-200 uppercase tracking-widest';
+        document.getElementById('btn-session').textContent = 'Initiate JWT';
+    }
+
+    async function runAction() {
+        if (!activeToken) {
+            if(typeof showToast === 'function') showToast('Authorization Required', 'error');
+            return;
+        }
+        const btn = document.getElementById('btn-fire');
+        btn.disabled = true;
+        btn.textContent = "PROCESSING";
+
+        try {
+            const payload = JSON.parse(document.getElementById('action-payload').value);
+            const res = await fetch('/cloud/actions/invoke', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${activeToken}`
+                },
+                body: JSON.stringify({
+                    provider: document.getElementById('cloud-provider').value,
+                    action: document.getElementById('action-target').value,
+                    params: payload.params || payload,
+                    body: payload
+                })
+            });
+            const data = await res.json();
+            document.getElementById('action-response').classList.remove('hidden');
+            document.getElementById('response-content').textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+            alert("Payload Analysis Error: Valid JSON required.");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Fire Proxy Payload";
+        }
+    }
+
+    async function fetchTableData() {
+        try {
+            const res = await fetch('/dashboard/summary');
+            const data = await res.json();
+            if (data.latest_threats) {
+                const b = document.getElementById('decisions-body');
+                b.innerHTML = data.latest_threats.slice(0, 15).map(t => {
+                    let badgeClass = 'text-zinc-500 bg-zinc-50 border-zinc-200';
+                    if(t.decision === 'ISOLATE') badgeClass = 'text-white bg-black border-black';
+                    if(t.decision === 'RATE_LIMIT') badgeClass = 'text-black bg-zinc-100 border-black font-black';
+                    
+                    return `<tr class="hover:bg-zinc-50 transition-colors">
+                        <td class="px-8 py-5 text-[10px] font-black text-zinc-400 uppercase">${new Date(t.time).toLocaleTimeString()}</td>
+                        <td class="px-8 py-5 text-[10px] font-black text-black uppercase tracking-tight">${t.entity_id}</td>
+                        <td class="px-8 py-5">
+                            <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${badgeClass}">${t.decision}</span>
+                        </td>
+                        <td class="px-8 py-5 text-center text-[10px] font-black text-black underline decoration-2">${t.confidence ? t.confidence.toFixed(1) : '100'}%</td>
+                        <td class="px-8 py-5 hidden md:table-cell text-[10px] text-zinc-500 font-bold uppercase truncate max-w-[400px]">${t.reason_explain || t.reason}</td>
+                    </tr>`;
+                }).join('');
+            }
+        } catch(e) {}
+    }
+    
+    setInterval(fetchTableData, 3000);
+    fetchTableData();
+</script>
+{% endblock %}

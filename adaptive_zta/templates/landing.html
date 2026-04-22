@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Argent Sentinel | Autonomous Zero Trust</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-color: #fff; }
+        .enterprise-card {
+            background: #ffffff;
+            border: 2px solid #000;
+            transition: all 0.1s ease;
+        }
+        .enterprise-card:hover {
+            box-shadow: 8px 8px 0px 0px rgba(0,0,0,1);
+            transform: translate(-4px, -4px);
+        }
+        ::selection {
+            background: #000;
+            color: #fff;
+        }
+    </style>
+</head>
+<body class="bg-white text-black min-h-screen flex flex-col">
+    <!-- Navigation -->
+    <nav class="w-full max-w-7xl mx-auto flex items-center justify-between py-12 px-6 z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-black flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <span class="font-black text-2xl tracking-widest text-black">ARGENT<span class="underline decoration-4">SENTINEL</span></span>
+        </div>
+        <div class="flex items-center gap-6">
+            <a href="/login" class="text-[10px] font-black text-zinc-400 hover:text-black transition-colors uppercase tracking-widest">Sign_In</a>
+            <a href="/register" class="px-6 py-2.5 bg-black text-white text-[10px] font-black hover:bg-zinc-800 transition-all uppercase tracking-widest">Request_Access</a>
+        </div>
+    </nav>
+
+    <main class="flex-1 w-full max-w-7xl mx-auto flex flex-col items-center justify-center px-6 py-24 z-10">
+        <!-- Hero Section -->
+        <div class="text-center max-w-4xl space-y-12">
+            <div class="inline-flex items-center gap-2 px-4 py-2 border-2 border-black bg-black">
+                <div class="w-2 h-2 rounded-full bg-white animate-pulse"></div>
+                <span class="text-[9px] font-black text-white uppercase tracking-[0.2em]">PROTOCOL_Vanguard_CORE_INITIALIZED</span>
+            </div>
+            
+            <h1 class="text-7xl md:text-9xl font-black tracking-tighter text-black leading-[0.85] uppercase">
+                ADAPTIVE_TRUST.<br>
+                <span class="underline decoration-8">DETERMINISTIC_SECURITY.</span>
+            </h1>
+            
+            <p class="text-[14px] md:text-[16px] text-zinc-500 max-w-2xl mx-auto font-black leading-relaxed uppercase tracking-tight">
+                Continuous EVALUATION OF MICRO-BEHAVIORS, ENVIRONMENTAL CONTEXT, AND IDENTITY DYNAMICS TO DYNAMICALLY ENFORCE ZERO TRUST BOUNDARIES AT THE INDIVIDUAL REQUEST LEVEL.
+            </p>
+            
+            <div class="pt-10 flex flex-col sm:flex-row items-center justify-center gap-6">
+                <a href="/login" class="px-12 py-6 bg-black text-white font-black hover:bg-zinc-800 transition-all w-full sm:w-auto text-[10px] uppercase tracking-[0.3em]">
+                    ENTER_COMMAND_CENTER
+                </a>
+                <a href="/register" class="px-12 py-6 bg-white border-2 border-black text-black font-black hover:bg-zinc-50 transition-all w-full sm:w-auto text-[10px] uppercase tracking-[0.3em]">
+                    PROVISION_IDENTITY
+                </a>
+            </div>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="mt-40 grid md:grid-cols-3 gap-12 w-full">
+            <div class="enterprise-card p-10">
+                <div class="w-14 h-14 bg-black text-white flex items-center justify-center mb-8">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <h3 class="text-sm font-black text-black mb-4 tracking-widest uppercase">NEURAL_EVALUATION</h3>
+                <p class="text-zinc-500 text-[10px] leading-relaxed font-black uppercase">Sub-millisecond machine learning evaluates contextual metadata in real-time, neutralizing credential harvesting and lateral movement. No static rules required.</p>
+            </div>
+            
+            <div class="enterprise-card p-10">
+                <div class="w-14 h-14 bg-black text-white flex items-center justify-center mb-8">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                </div>
+                <h3 class="text-sm font-black text-black mb-4 tracking-widest uppercase">SHADOW_CALIBRATION</h3>
+                <p class="text-zinc-500 text-[10px] leading-relaxed font-black uppercase">Digital twin engines ingest adversarial feedback loops to infinitely scale analytical bounds, ensuring security hardening without production interruption.</p>
+            </div>
+
+            <div class="enterprise-card p-10">
+                <div class="w-14 h-14 bg-black text-white flex items-center justify-center mb-8">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <h3 class="text-sm font-black text-black mb-4 tracking-widest uppercase">TRACEABLE_A.I.</h3>
+                <p class="text-zinc-500 text-[10px] leading-relaxed font-black uppercase">Eliminate the Black Box. Every neural enforcement triggers a deeply inspectable forensic trace pipeline for absolute operational oversight.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-7xl mx-auto py-24 px-6 flex flex-col md:flex-row items-center justify-between border-t-2 border-black mt-40">
+        <p class="text-[9px] font-black text-black uppercase tracking-widest underline decoration-2">© 2026 ARGENT_SENTINEL_SECURITY_SYSTEMS. Vanguard_v4.2.0-STABLE</p>
+        <div class="flex gap-12 mt-8 md:mt-0">
+            <span class="text-[9px] font-black text-black uppercase tracking-widest">SYSTEM_HEALTH: _OPTIMAL</span>
+            <span class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">ENFORCEMENT_ACTIVE</span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,195 @@
+{% extends "saas_layout.html" %}
+
+{% block title %}Policy Engine - Argent Sentinel{% endblock %}
+{% block header_title %}Enforcement Intelligence{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header Block -->
+    <div class="enterprise-card p-8 flex flex-col md:flex-row justify-between items-start md:items-center bg-white">
+        <div>
+            <h2 class="text-lg font-black text-black uppercase tracking-widest">ACTIVE_ENFORCEMENT_POLICIES</h2>
+            <p class="text-[10px] text-zinc-400 font-bold mt-1 uppercase">ADAPTIVE_SECURITY_MANAGEMENT_LAYER</p>
+        </div>
+        
+        <div class="flex items-center gap-4 mt-4 md:mt-0">
+            <span class="px-3 py-1 rounded bg-black text-[9px] font-black text-white tracking-widest shadow-sm uppercase" id="rule-count-badge">SYNCING...</span>
+            
+            {% if request.state.platform_user and request.state.platform_user.role == 'Administrator' %}
+            <button onclick="document.getElementById('rule-modal').classList.remove('hidden')" class="cyber-btn px-4 py-2 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <span>New Strategy</span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Rules Grid -->
+    <div id="rules-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Pulse Loader -->
+        <div class="col-span-full py-20 flex justify-center">
+            <div class="animate-pulse flex flex-col items-center gap-4">
+                <div class="w-12 h-12 bg-zinc-100 border border-black rounded"></div>
+                <div class="h-2 bg-zinc-100 rounded w-32 border border-zinc-200"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rule Creation Modal -->
+{% if request.state.platform_user and request.state.platform_user.role == 'Administrator' %}
+<div id="rule-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="enterprise-card w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200 border-2 border-black">
+        <div class="px-8 py-6 border-b border-black bg-zinc-50/50 flex justify-between items-center">
+            <div>
+                <h3 class="text-sm font-black text-black uppercase tracking-widest">CONFIGURE_ADAPTIVE_RULE</h3>
+                <p class="text-[9px] text-zinc-400 font-bold mt-1 uppercase">AUTOMATED_PLATFORM_INTERVENTION_V3</p>
+            </div>
+            <button onclick="document.getElementById('rule-modal').classList.add('hidden')" class="p-2 text-zinc-400 hover:text-black transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <div class="p-8 space-y-6">
+            <div class="grid grid-cols-2 gap-6">
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">RULE_IDENTIFIER</label>
+                    <input id="new-rule-id" type="text" placeholder="E.G. HIGH-LATENCY-BLOCK" class="cyber-input w-full px-4 py-2.5 text-xs">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">PRIORITY_INDEX</label>
+                    <input id="new-rule-priority" type="number" value="85" class="cyber-input w-full px-4 py-2.5 text-xs">
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Enforcement Action</label>
+                <div class="grid grid-cols-3 gap-3">
+                    <select id="new-rule-action" class="cyber-input col-span-3 px-4 py-2.5 text-sm appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:20px] bg-[right_12px_center] bg-no-repeat">
+                        <option value="ALLOW">ALLOW (Unrestricted)</option>
+                        <option value="RATE_LIMIT">RATE LIMIT (Throttle)</option>
+                        <option value="ISOLATE">ISOLATE (Air-gap)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Trigger Condition</label>
+                <div class="flex items-center gap-2">
+                    <select id="new-rule-field" class="cyber-input flex-1 px-3 py-2 text-xs">
+                        <option value="trust_score">Neural Trust Score</option>
+                        <option value="failed_auth_count">Auth Failures</option>
+                        <option value="geo_anomaly_flag">Geo Anomaly</option>
+                        <option value="api_rate">API Velocity</option>
+                        <option value="traversal_depth">Traversal Depth</option>
+                    </select>
+                    <select id="new-rule-op" class="cyber-input w-24 px-3 py-2 text-xs">
+                        <option value="lt">Lower</option>
+                        <option value="gt">Higher</option>
+                        <option value="eq">Equals</option>
+                        <option value="gte">GTE</option>
+                    </select>
+                    <input id="new-rule-value" type="text" placeholder="Value" class="cyber-input w-20 px-3 py-2 text-xs">
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-[9px] font-black text-zinc-500 uppercase tracking-widest pl-1">Intervention Forensic Log</label>
+                <textarea id="new-rule-reason" placeholder="EXPLAIN_INTERVENTION_LOGIC_FOR_AUDIT..." class="cyber-input w-full px-4 py-3 text-[11px] h-24 resize-none uppercase"></textarea>
+            </div>
+        </div>
+
+        <div class="px-8 py-5 bg-zinc-50/50 border-t border-black flex justify-end gap-3">
+            <button onclick="document.getElementById('rule-modal').classList.add('hidden')" class="px-4 py-2 text-[9px] font-black text-zinc-400 hover:text-black transition-colors uppercase tracking-widest">Discard</button>
+            <button onclick="submitNewRule()" class="cyber-btn px-6 py-2.5 text-[9px] uppercase tracking-widest">DEPLOY_POLICY</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadRules() {
+        try {
+            const res = await fetch('/policy/rules');
+            if(!res.ok) return;
+            const data = await res.json();
+            
+            const countBadge = document.getElementById('rule-count-badge');
+            const grid = document.getElementById('rules-grid');
+            
+            if(data.rules && data.rules.length > 0) {
+                countBadge.textContent = `${data.rules.length} Active Policies`;
+                
+                grid.innerHTML = data.rules.map(r => {
+                    let actionClass = 'border-zinc-200 text-black bg-zinc-50 font-black';
+                    if (r.action === 'ISOLATE') actionClass = 'border-black text-white bg-black';
+                    if (r.action === 'RATE_LIMIT') actionClass = 'border-black text-black bg-zinc-100 font-bold';
+
+                    return `
+                        <div class="enterprise-card p-6 flex flex-col group hover:ring-2 hover:ring-black">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="min-w-0">
+                                    <h4 class="text-sm font-black text-black truncate uppercase tracking-tight">${r.id}</h4>
+                                    <p class="text-[9px] font-black text-zinc-400 mt-1">PRIORITY: ${r.priority}</p>
+                                </div>
+                                <span class="px-2 py-0.5 rounded text-[8px] font-black tracking-widest border ${actionClass}">${r.action}</span>
+                            </div>
+                            
+                            <p class="text-[10px] text-zinc-500 font-bold line-clamp-3 mb-6 leading-relaxed flex-1 uppercase">
+                                ${r.reason || 'NO_FORENSIC_DESCRIPTION_AVAILABLE_FOR_BOUNDARY.'}
+                            </p>
+                            
+                            <div class="pt-4 border-t border-zinc-100 flex flex-wrap gap-2">
+                                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-100 text-[9px] font-black text-black uppercase tracking-widest">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6-6"></path></svg>
+                                    ${r.match_count || 0} MATCHES
+                                </div>
+                                <div class="px-2 py-1 rounded bg-black text-[9px] font-black text-white border border-black uppercase tracking-widest">
+                                    VERIFIED_BOUNDARY
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                countBadge.textContent = "0 ACTIVE POLICIES";
+                grid.innerHTML = `<div class="col-span-full py-20 text-center text-zinc-400 text-[10px] font-black uppercase italic border border-dashed border-black rounded tracking-widest">NO_ENFORCEMENT_RULES_DISCOVERED_IN_WORKSPACE.</div>`;
+            }
+        } catch(e) {}
+    }
+
+    async function submitNewRule() {
+        const payload = {
+            id: document.getElementById('new-rule-id').value || "CUSTOM-" + Math.floor(Math.random()*1000),
+            priority: parseInt(document.getElementById('new-rule-priority').value),
+            action: document.getElementById('new-rule-action').value,
+            reason: document.getElementById('new-rule-reason').value || "Manual adaptive boundary deployment.",
+            conditions: [
+                {
+                    field: document.getElementById('new-rule-field').value,
+                    op: document.getElementById('new-rule-op').value,
+                    value: document.getElementById('new-rule-value').value
+                }
+            ]
+        };
+        
+        try {
+            const res = await fetch('/policy/rules/add', {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                if(typeof showToast === 'function') showToast("Adaptive Policy Enforced Successfully", "success");
+                document.getElementById('rule-modal').classList.add('hidden');
+                loadRules(); 
+            }
+        } catch(e) {
+            if(typeof showToast === 'function') showToast("Deployment Verification Failed", "error");
+        }
+    }
+
+    loadRules();
+</script>
+{% endblock %}

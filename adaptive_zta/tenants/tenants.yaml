@@ -1,0 +1,71 @@
+tenants:
+- id: default
+  display_name: Default Tenant
+  trust_thresholds:
+    allow: 65.0
+    rate_limit: 48.0
+    isolate: 48.0
+  rate_limit_rpm: 12000
+  allowed_cloud_envs:
+  - AWS
+  - Azure
+  - GCP
+  policy_file: default
+  shadow_learning_enabled: true
+  max_entities: 50000
+  active: true
+  safety:
+    max_isolations_per_minute: 50
+    max_cloud_mutations_per_hour: 5
+- id: fintech-prod
+  display_name: FinTech Production
+  trust_thresholds:
+    allow: 70.0
+    rate_limit: 55.0
+    isolate: 55.0
+  rate_limit_rpm: 6000
+  allowed_cloud_envs:
+  - AWS
+  - Azure
+  policy_file: default
+  shadow_learning_enabled: true
+  max_entities: 10000
+  active: true
+  safety:
+    max_isolations_per_minute: 20
+    max_cloud_mutations_per_hour: 2
+- id: research-sandbox
+  display_name: Research Sandbox
+  trust_thresholds:
+    allow: 50.0
+    rate_limit: 35.0
+    isolate: 35.0
+  rate_limit_rpm: 60000
+  allowed_cloud_envs:
+  - AWS
+  - Azure
+  - GCP
+  policy_file: default
+  shadow_learning_enabled: true
+  max_entities: 200000
+  active: true
+  safety:
+    max_isolations_per_minute: 200
+    max_cloud_mutations_per_hour: 0
+- id: cyberdyne-ops
+  display_name: Cyberdyne Operations
+  trust_thresholds:
+    allow: 65.0
+    rate_limit: 48.0
+    isolate: 48.0
+  rate_limit_rpm: 12000
+  allowed_cloud_envs:
+  - AWS
+  - Azure
+  policy_file: default
+  shadow_learning_enabled: true
+  max_entities: 50000
+  active: true
+  safety:
+    max_isolations_per_minute: 50
+    max_cloud_mutations_per_hour: 5

@@ -1,0 +1,285 @@
+{% extends "saas_layout.html" %}
+
+{% block title %}Forensics - Argent Sentinel{% endblock %}
+{% block header_title %}Forensic Decision Analysis <span class="ml-4 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-mono text-slate-500 font-bold tracking-tight">TXID: {{ decision_id }}</span>{% endblock %}
+
+{% block extra_css %}
+<style>
+    .trace-node { 
+        position: relative; 
+        padding-left: 28px; 
+        border-left: 1px solid #000; 
+        padding-bottom: 32px; 
+        transition: all 0.3s; 
+    }
+    .trace-node::before {
+        content: ''; position: absolute; left: -5px; top: 0; width: 10px; height: 10px;
+        border-radius: 2px; background: #fff; border: 2px solid #000; transition: all 0.3s;
+    }
+    .trace-node.active::before { 
+        background: #000; 
+        box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
+    }
+    .trace-node.alert::before { 
+        background: #000; 
+        width: 12px; height: 12px; left: -6px;
+    }
+    .trace-node.safe::before { background: #fff; }
+    .trace-node:last-child { border-left-color: transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-12 gap-6" id="dashboard-container">
+    <div id="loading" class="col-span-12 flex justify-center py-40">
+        <div class="flex flex-col items-center gap-4">
+            <div class="animate-spin w-10 h-10 border border-black border-t-transparent rounded shadow-sm"></div>
+            <p class="text-[10px] font-black text-black uppercase tracking-widest">RECONSTRUCTING_FORENSICS...</p>
+        </div>
+    </div>
+</div>
+
+<template id="explorer-content">
+    <!-- Col 1: Identity Profile -->
+    <div class="col-span-12 lg:col-span-3 space-y-6">
+        <div class="enterprise-card p-8 bg-white" id="verdict-card">
+            <h2 class="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-6">Subject Identity</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <div class="text-xs font-black text-black font-mono break-all" id="val-entity">--</div>
+                    <div class="text-[9px] font-black text-black uppercase tracking-widest mt-1 border-b border-black inline-block" id="val-tenant">TENANT_CONTEXT</div>
+                </div>
+                
+                <div class="pt-6 relative flex items-center justify-center">
+                    <svg class="w-32 h-32 transform -rotate-90">
+                        <circle cx="64" cy="64" r="58" stroke="currentColor" stroke-width="4" fill="transparent" class="text-zinc-100"></circle>
+                        <circle id="trust-progress" cx="64" cy="64" r="58" stroke="currentColor" stroke-width="4" fill="transparent" class="text-black" stroke-dasharray="364.4" stroke-dashoffset="364.4" style="transition: stroke-dashoffset 1s ease-out;"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                        <span class="text-2xl font-black text-black font-mono" id="val-trust">--</span>
+                        <span class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Trust Index</span>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <div class="p-4 bg-zinc-50 border border-black text-center">
+                        <div class="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Final Authorization</div>
+                        <div class="text-base font-black text-black uppercase tracking-widest" id="val-action">PENDING</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="enterprise-card p-6 bg-white">
+            <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Temporal Signature</h2>
+            <div class="font-mono text-[11px] text-slate-700 font-medium" id="val-time"></div>
+        </div>
+    </div>
+
+    <!-- Col 2: Neural Components -->
+    <div class="col-span-12 lg:col-span-5 space-y-6">
+        <div class="enterprise-card p-8 bg-white h-full border-t-2 border-black flex flex-col">
+            <h2 class="text-[10px] font-black text-black uppercase tracking-widest flex items-center gap-2 mb-8">
+                <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Telemetry Matrix at Evaluation
+            </h2>
+            
+            <div class="grid grid-cols-2 gap-4 mb-10">
+                <div class="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Request Velocity</div>
+                    <div class="font-bold text-slate-900 text-lg font-mono" id="feat-api">--</div>
+                </div>
+                <div class="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Payload Mass</div>
+                    <div class="font-bold text-slate-900 text-lg font-mono" id="feat-payload">--</div>
+                </div>
+                <div class="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Spatial Anomaly</div>
+                    <div class="font-bold text-slate-900 text-lg font-mono" id="feat-geo">False</div>
+                </div>
+                <div class="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Policy Override</div>
+                    <div class="font-bold text-slate-900 text-lg font-mono" id="feat-risk">--</div>
+                </div>
+            </div>
+
+            <div class="space-y-6 flex-1">
+                <h3 class="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Trust Vector Decomposition</h3>
+                <div>
+                    <div class="flex justify-between text-[9px] mb-2 font-mono font-black"><span class="text-zinc-500 uppercase">Behavioral Vector B(t)</span> <span id="feat-b" class="text-black">--</span></div>
+                    <div class="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden"><div class="h-full bg-black transition-all duration-1000" id="bar-b" style="width: 0%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-[9px] mb-2 font-mono font-black"><span class="text-zinc-500 uppercase">Contextual Vector C(t)</span> <span id="feat-c" class="text-black">--</span></div>
+                    <div class="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden"><div class="h-full bg-zinc-400 transition-all duration-1000" id="bar-c" style="width: 0%"></div></div>
+                </div>
+            </div>
+            
+            <div class="mt-10 pt-8 border-t border-zinc-100 flex justify-between items-center bg-zinc-50/50 -mx-8 -mb-8 p-8 border-b-0 rounded-b">
+                <div class="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Governance Feedback</div>
+                <div class="flex gap-3">
+                    {% if request.state.platform_user and request.state.platform_user.role != 'ReadOnly' %}
+                    <button onclick="submitFeedback(true)" id="btn-valid" class="px-4 py-2 bg-black text-white text-[9px] font-black rounded uppercase tracking-widest shadow-xl hover:bg-zinc-800 transition-all">Confirm Threat</button>
+                    <button onclick="submitFeedback(false)" id="btn-fp" class="px-4 py-2 bg-white text-black text-[9px] font-black rounded uppercase tracking-widest border border-black hover:bg-zinc-50">False Positive</button>
+                    {% else %}
+                    <span class="text-[9px] font-black text-zinc-400 uppercase italic">Restricted</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Col 3: Engine Trace -->
+    <div class="col-span-12 lg:col-span-4 space-y-6">
+        <div class="enterprise-card p-8 bg-white h-full">
+            <h2 class="text-[10px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2 mb-10 pb-6 border-b border-slate-50">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                Decision Logic Trace
+            </h2>
+
+            <div class="pl-2 space-y-2">
+                <div class="trace-node active">
+                    <div class="text-[9px] font-black text-black font-mono mb-1 underline decoration-2">01 SYNC</div>
+                    <div class="text-[11px] font-black text-black uppercase">Neural Trust Emitted</div>
+                    <div class="text-[10px] text-zinc-500 font-bold mt-1 uppercase leading-snug">Probabilistic trust score exported to DAG context.</div>
+                </div>
+                
+                <div class="trace-node active" id="trace-policy">
+                    <div class="text-[9px] font-black text-black font-mono mb-1 underline decoration-2">02 EVAL</div>
+                    <div class="text-[11px] font-black text-black uppercase">Policy Resolution</div>
+                    <div class="mt-3 p-4 bg-zinc-50 border border-black text-[10px] text-zinc-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed" id="trace-matched"></div>
+                </div>
+
+                <div class="trace-node active" id="trace-final">
+                    <div class="text-[9px] font-black text-black font-mono mb-1 underline decoration-2" id="trace-final-step">03 EXEC</div>
+                    <div class="text-[11px] font-black text-black uppercase" id="trace-final-action">Authorization Decision</div>
+                    <div class="mt-3 px-4 py-3 bg-black text-white text-[10px] font-mono shadow-inner break-words uppercase" id="trace-reason"></div>
+                </div>
+
+                <div class="trace-node" id="trace-failsafe">
+                    <div class="text-[9px] font-black text-black font-mono mb-1 underline decoration-2">04 FAIL-SAFE</div>
+                    <div class="text-[11px] font-black text-black uppercase" id="failsafe-state">Circuit Breaker System</div>
+                    <div class="mt-3 p-4 bg-zinc-50 border border-black text-[10px] text-zinc-400 font-mono italic uppercase" id="failsafe-reason">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const decision_id = "{{ decision_id }}";
+    const canSubmitFeedback = "{{ 'true' if request.state.platform_user and request.state.platform_user.role != 'ReadOnly' else 'false' }}" === "true";
+    
+    async function submitFeedback(is_correct) {
+        if (!canSubmitFeedback) return;
+        const btnValid = document.getElementById('btn-valid');
+        const btnFP = document.getElementById('btn-fp');
+        
+        btnValid.disabled = true;
+        btnFP.disabled = true;
+        btnValid.style.opacity = '0.5';
+        btnFP.style.opacity = '0.5';
+
+        try {
+            const res = await fetch(`/soc/decision/${decision_id}/feedback`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ "is_correct": is_correct })
+            });
+            if (res.ok) {
+                if(typeof showToast === 'function') {
+                    showToast(is_correct ? "Threat Confirmed" : "False Positive Logged", "success");
+                }
+                if (is_correct) {
+                    btnValid.textContent = "VERIFIED";
+                    btnValid.className = 'px-4 py-2 bg-black text-white text-[9px] font-black rounded uppercase tracking-widest';
+                } else {
+                    btnFP.textContent = "LOGGED FP";
+                    btnFP.className = 'px-4 py-2 bg-zinc-200 text-black text-[9px] font-black rounded uppercase tracking-widest';
+                }
+            }
+        } catch(e) {}
+    }
+
+    async function loadTrace() {
+        try {
+            const res = await fetch(`/api/decision/${decision_id}/trace`);
+            if(!res.ok) throw new Error("Not found");
+            const data = await res.json();
+            
+            const cont = document.getElementById('dashboard-container');
+            const tmpl = document.getElementById('explorer-content');
+            cont.innerHTML = "";
+            cont.appendChild(tmpl.content.cloneNode(true));
+            
+            document.getElementById('val-entity').textContent = data.entity_id;
+            document.getElementById('val-tenant').textContent = `TENANT: ${data.tenant_id || "GLOBAL"}`;
+            document.getElementById('val-time').textContent = new Date(data.timestamp).toLocaleString();
+            
+            const trustVal = data.trust_score != null ? data.trust_score.toFixed(1) : 0;
+            document.getElementById('val-trust').textContent = trustVal + '%';
+            
+            // Progress ring animation
+            const ring = document.getElementById('trust-progress');
+            if (ring) {
+                const radius = 58;
+                const circ = 2 * Math.PI * radius;
+                const offset = circ - (trustVal / 100) * circ;
+                ring.style.strokeDasharray = circ;
+                ring.style.strokeDashoffset = offset;
+            }
+            
+            const action = document.getElementById('val-action');
+            const actionText = data.action || data.final_decision;
+            action.textContent = actionText;
+            
+            if (actionText === 'ISOLATE') { 
+                action.className = 'text-base font-black text-black uppercase tracking-widest underline decoration-4'; 
+                document.getElementById('trace-final').classList.add('alert'); 
+            } else if (actionText === 'RATE_LIMIT') { 
+                action.className = 'text-base font-black text-zinc-500 uppercase tracking-widest'; 
+            } else { 
+                action.className = 'text-base font-black text-black uppercase tracking-widest'; 
+                document.getElementById('trace-final').classList.add('safe'); 
+            }
+
+            if (data.telemetry) {
+                document.getElementById('feat-api').textContent = `${data.telemetry.api_rate || 0} REQ/M`;
+                document.getElementById('feat-payload').textContent = `${((data.telemetry.payload_size || 0)/1024).toFixed(1)} KB`;
+                document.getElementById('feat-geo').textContent = data.telemetry.geo_anomaly ? "HIGH" : "NORMAL";
+            }
+            
+            document.getElementById('feat-risk').textContent = data.reason && data.reason.includes("Override") ? "HIGH" : "SYSTEM";
+            
+            if (data.b_score != null) {
+                document.getElementById('feat-b').textContent = data.b_score.toFixed(2);
+                document.getElementById('bar-b').style.width = `${Math.min(100, data.b_score * 5)}%`;
+            }
+            if (data.c_score != null) {
+                document.getElementById('feat-c').textContent = data.c_score.toFixed(2);
+                document.getElementById('bar-c').style.width = `${Math.min(100, data.c_score * 50)}%`;
+            }
+
+            document.getElementById('trace-matched').textContent = data.matched_rule ? JSON.stringify(data.matched_rule, null, 2) : "Autonomous behavioral orchestration (No static rule matched)";
+            document.getElementById('trace-reason').textContent = data.reason || "Enforced based on neural trust threshold.";
+
+            if (data.fail_safe && data.fail_safe.applied) {
+                document.getElementById('trace-failsafe').classList.add('alert');
+                document.getElementById('failsafe-state').textContent = `Fail-Safe Applied`;
+                document.getElementById('failsafe-reason').textContent = data.fail_safe.reason || 'Manual override';
+            } else {
+                document.getElementById('trace-failsafe').classList.add('safe');
+                document.getElementById('failsafe-state').textContent = `Fail-Safe Verified`;
+                document.getElementById('failsafe-reason').textContent = 'Decision integrity validated by circuit breaker.';
+            }
+
+        } catch(e) {
+            document.getElementById('loading').innerHTML = '<div class="text-black bg-white border border-black px-6 py-4 rounded text-[9px] font-black uppercase tracking-widest shadow-xl">TRACE_CONTEXT_UNAVAILABLE_OR_PURGED</div>';
+        }
+    }
+    
+    setTimeout(loadTrace, 300);
+</script>
+{% endblock %}
