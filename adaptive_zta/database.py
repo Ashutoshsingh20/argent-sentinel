@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, JSON, text, Index
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, JSON, text, Index, ForeignKeyConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -91,6 +91,7 @@ class Entity(Base):
     __tablename__ = "entities"
     
     id = Column(String, primary_key=True, index=True) # ENT-001
+    tenant_id = Column(String, primary_key=True, default="default", index=True)
     entity_type = Column(String)
     cloud_env = Column(String)
     current_trust_score = Column(Float, default=75.0)
@@ -105,7 +106,14 @@ class Telemetry(Base):
     __tablename__ = "telemetry"
     
     id = Column(Integer, primary_key=True, index=True)
-    entity_id = Column(String, ForeignKey("entities.id"))
+    tenant_id = Column(String, default="default", index=True)
+    entity_id = Column(String)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['tenant_id', 'entity_id'],
+            ['entities.tenant_id', 'entities.id']
+        ),
+    )
     timestamp = Column(Float)
     timestep = Column(Integer, nullable=True)
     api_rate = Column(Float)
@@ -123,7 +131,14 @@ class EnforcementAction(Base):
     __tablename__ = "enforcements"
     
     id = Column(Integer, primary_key=True, index=True)
-    entity_id = Column(String, ForeignKey("entities.id"))
+    tenant_id = Column(String, default="default", index=True)
+    entity_id = Column(String)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['tenant_id', 'entity_id'],
+            ['entities.tenant_id', 'entities.id']
+        ),
+    )
     timestamp = Column(DateTime, default=datetime.utcnow)
     decision = Column(String)
     reason = Column(Text)
@@ -150,6 +165,7 @@ class DecisionRecord(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(String, index=True)
+    tenant_id = Column(String, default="default", index=True)
     timestamp = Column(String, index=True)
     source = Column(String, index=True)
     entity_id = Column(String, nullable=True, index=True)

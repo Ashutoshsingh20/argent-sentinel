@@ -79,7 +79,7 @@ class ArgentBrain:
     def predict(self, feature_vector: List[float]) -> Tuple[float, str]:
         """Returns (trust_score, decision_reason)."""
         if not self.model_ready:
-            return 0.85, "model_not_ready_fallback"
+            return 85.0, "model_not_ready_fallback"
             
         try:
             X = np.array([feature_vector], dtype=np.float32)
@@ -98,7 +98,8 @@ class ArgentBrain:
         telemetry: Dict[str, Any] | str, 
         entity: Any = None, 
         true_label: Optional[int] = None,
-        features: Optional[np.ndarray] = None
+        features: Optional[np.ndarray] = None,
+        tenant_id: str = "default"
     ) -> Tuple[float, str, str, float, Dict[str, float]]:
         """
         Main interface for app.py
@@ -113,17 +114,19 @@ class ArgentBrain:
                 # Fallback: we don't have telemetry dict here, use default or fetch if needed
                 # For now, use an empty-ish vector to avoid crash
                 feat_vec = np.zeros(8)
+            t_id = tenant_id # use explicitly passed tenant_id
         else:
             feat_vec = self._build_feature_vector(telemetry, entity)
+            t_id = telemetry.get("tenant_id", tenant_id)
 
         score, reason = self.predict(feat_vec)
         
-        # If true_label provided, record feedback for shadow learning
         if true_label is not None:
             self.record_enforcement_feedback(
                 entity_id=telemetry if isinstance(telemetry, str) else telemetry.get('entity_id', 'unknown'),
                 session=entity if not isinstance(telemetry, str) else entity, # session is passed as entity in worker path
-                true_label=true_label
+                true_label=true_label,
+                tenant_id=t_id
             )
 
         # Default components for UI
@@ -150,11 +153,15 @@ class ArgentBrain:
             1.0 if str(telemetry.get("cloud_env")).upper() == "AWS" else 0.5
         ]
 
-    def record_enforcement_feedback(self, entity_id: str, session: Any, true_label: int):
+    def record_enforcement_feedback(self, entity_id: str, session: Any, true_label: int, tenant_id: str = "default"):
         """Records ground-truth for shadow learning."""
         with self._buffer_lock:
             # Logic to find the features from history would go here
-            self.hard_buffer.append( (np.random.rand(8), true_label) )
+            self.hard_buffer.append({
+                "tenant_id": tenant_id,
+                "features": np.random.rand(8), # placeholder features
+                "label": true_label
+            })
         return True
 
     def start_shadow_learning(self):

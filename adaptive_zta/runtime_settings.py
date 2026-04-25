@@ -88,6 +88,11 @@ class Settings:
     gateway_allow_threshold: float = _as_float("GATEWAY_ALLOW_THRESHOLD", 55.0)
     gateway_isolate_threshold: float = _as_float("GATEWAY_ISOLATE_THRESHOLD", 40.0)
 
+    # Per-tenant isolation (Issue #1). When enabled, all shared state
+    # (hot state, feature cache, circuit breakers, fail-safe, alerts)
+    # is namespaced by tenant_id to prevent cross-tenant data leakage.
+    tenant_isolation_enabled: bool = _as_bool("TENANT_ISOLATION", False)
+
     def jwt_exempt_paths(self) -> Set[str]:
         return {path.strip() for path in self.jwt_exempt_paths_raw.split(",") if path.strip()}
 

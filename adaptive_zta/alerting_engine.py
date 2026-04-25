@@ -36,6 +36,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Literal, Optional, Tuple
+from tenant_scope import alert_key as _alert_key
+from runtime_settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -300,15 +302,23 @@ class AlertManager:
             time.sleep(self._scan_interval)
 
     def _evaluate_all_rules(self) -> None:
-        """Evaluate all 12 built-in alert rules."""
-        self._check_circuit_breaker()
-        self._check_isolation_rate()
+        """Evaluate all built-in alert rules."""
+        if settings.tenant_isolation_enabled:
+            from tenant_registry import get_tenant_registry
+            tenants = [t["id"] for t in get_tenant_registry().list_all()]
+        else:
+            tenants = ["default"]
+
+        for tenant_id in tenants:
+            self._check_circuit_breaker(tenant_id)
+            self._check_isolation_rate(tenant_id)
+            self._check_fp_rate(tenant_id)
+            self._check_fn_rate(tenant_id)
+            self._check_trust_score(tenant_id)
+            self._check_model_feedback(tenant_id)
+            
         self._check_risk_budget()
-        self._check_fp_rate()
-        self._check_fn_rate()
-        self._check_trust_score()
         self._check_cloud_mutation_cap()
-        self._check_model_feedback()
         self._check_safety_downgrade()
 
     # ── Helper: fire or auto-resolve ────────────────────────────────────────
@@ -319,17 +329,18 @@ class AlertManager:
         severity: AlertSeverity,
         title: str,
         description: str,
-        tenant_id: Optional[str] = None,
+        tenant_id: str = "default",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Fire alert if not already firing for this rule. Track for auto-resolve."""
+        rk = _alert_key(tenant_id, rule_id) if settings.tenant_isolation_enabled else rule_id
         with self._lock:
-            if rule_id in self._firing_rules:
+            if rk in self._firing_rules:
                 return  # already firing
 
         alert = Alert(
             alert_id=str(uuid.uuid4()),
-            rule_id=rule_id,
+            rule_id=rk,
             severity=severity,
             title=title,
             description=description,
@@ -340,13 +351,14 @@ class AlertManager:
         )
         self.store.fire(alert)
         with self._lock:
-            self._firing_rules[rule_id] = alert.alert_id
+            self._firing_rules[rk] = alert.alert_id
             self._stats["alerts_fired"] += 1
 
-    def _auto_resolve(self, rule_id: str) -> None:
+    def _auto_resolve(self, rule_id: str, tenant_id: str = "default") -> None:
         """Auto-resolve an alert if its condition has cleared."""
+        rk = _alert_key(tenant_id, rule_id) if settings.tenant_isolation_enabled else rule_id
         with self._lock:
-            alert_id = self._firing_rules.pop(rule_id, None)
+            alert_id = self._firing_rules.pop(rk, None)
         if alert_id:
             self.store.resolve(alert_id, operator_id="auto_resolve")
             with self._lock:
@@ -354,33 +366,37 @@ class AlertManager:
 
     # ── Rule 1: Circuit Breaker OPEN ────────────────────────────────────────
 
-    def _check_circuit_breaker(self) -> None:
+    def _check_circuit_breaker(self, tenant_id: str = "default") -> None:
         try:
             from safety_controller import get_safety_controller
             sc = get_safety_controller()
-            status = sc.circuit.get_status()
-            if status.state in ("OPEN", "HALF_OPEN"):
+            status = sc.get_status(tenant_id=tenant_id)["circuit_breaker"]
+            state = status["state"]
+            if state in ("OPEN", "HALF_OPEN"):
                 self._fire_or_skip(
                     rule_id="CIRCUIT_BREAKER_OPEN",
                     severity="CRITICAL",
                     title="Circuit Breaker Tripped",
-                    description=f"Circuit breaker is {status.state}. Trigger: {status.last_trigger or 'unknown'}. "
-                                f"Failure count: {status.failure_count}. All decisions falling back to {status.fallback_action}.",
-                    metadata={"state": status.state, "trigger": status.last_trigger, "failures": status.failure_count},
+                    description=f"Circuit breaker is {state}. Trigger: {status['last_trigger'] or 'unknown'}. "
+                                f"Failure count: {status['failure_count']}. All decisions falling back to {status['fallback_action']}.",
+                    tenant_id=tenant_id,
+                    metadata={"state": state, "trigger": status["last_trigger"], "failures": status["failure_count"]},
                 )
             else:
-                self._auto_resolve("CIRCUIT_BREAKER_OPEN")
+                self._auto_resolve("CIRCUIT_BREAKER_OPEN", tenant_id=tenant_id)
         except Exception:
             pass
 
     # ── Rule 2: Isolation Rate Spike ────────────────────────────────────────
 
-    def _check_isolation_rate(self) -> None:
+    def _check_isolation_rate(self, tenant_id: str = "default") -> None:
         try:
+
             from safety_controller import get_safety_controller
             sc = get_safety_controller()
-            isolate_count = sc.circuit._isolate_events.count()
-            total_count = sc.circuit._total_events.count()
+            cb = sc._get_circuit_breaker(tenant_id) if settings.tenant_isolation_enabled else sc.circuit
+            isolate_count = cb._isolate_events.count()
+            total_count = cb._total_events.count()
             if total_count >= 10:
                 rate = isolate_count / total_count
                 if rate > 0.30:
@@ -390,12 +406,13 @@ class AlertManager:
                         title="Isolation Rate Spike",
                         description=f"Isolation rate is {rate:.1%} ({isolate_count}/{total_count} events in 60s window). "
                                     f"Threshold: 30%.",
+                        tenant_id=tenant_id,
                         metadata={"rate": round(rate, 4), "isolations": isolate_count, "total": total_count},
                     )
                 else:
-                    self._auto_resolve("ISOLATION_RATE_SPIKE")
+                    self._auto_resolve("ISOLATION_RATE_SPIKE", tenant_id=tenant_id)
             else:
-                self._auto_resolve("ISOLATION_RATE_SPIKE")
+                self._auto_resolve("ISOLATION_RATE_SPIKE", tenant_id=tenant_id)
         except Exception:
             pass
 
@@ -426,11 +443,11 @@ class AlertManager:
 
     # ── Rule 4: High FP Rate ───────────────────────────────────────────────
 
-    def _check_fp_rate(self) -> None:
+    def _check_fp_rate(self, tenant_id: str = "default") -> None:
         try:
             from intelligence_layer import get_intelligence_layer
             intel = get_intelligence_layer()
-            accuracy = intel.feedback.get_rule_accuracy(since_hours=24.0, min_samples=10)
+            accuracy = intel.feedback.get_rule_accuracy(tenant_id=tenant_id, since_hours=24.0, min_samples=10)
             any_firing = False
             for rule_id, stats in accuracy.items():
                 if stats.get("fp_rate", 0) > 0.25:
@@ -440,21 +457,22 @@ class AlertManager:
                         title=f"High False-Positive Rate — {rule_id}",
                         description=f"Rule '{rule_id}' has a {stats['fp_rate']:.0%} false-positive rate "
                                     f"({stats['total']} samples in 24h). Consider tuning down priority.",
+                        tenant_id=tenant_id,
                         metadata={"rule_id": rule_id, **stats},
                     )
                     any_firing = True
                 else:
-                    self._auto_resolve(f"RULE_FP_RATE_HIGH:{rule_id}")
+                    self._auto_resolve(f"RULE_FP_RATE_HIGH:{rule_id}", tenant_id=tenant_id)
         except Exception:
             pass
 
     # ── Rule 5: High FN Rate ───────────────────────────────────────────────
 
-    def _check_fn_rate(self) -> None:
+    def _check_fn_rate(self, tenant_id: str = "default") -> None:
         try:
             from intelligence_layer import get_intelligence_layer
             intel = get_intelligence_layer()
-            accuracy = intel.feedback.get_rule_accuracy(since_hours=24.0, min_samples=10)
+            accuracy = intel.feedback.get_rule_accuracy(tenant_id=tenant_id, since_hours=24.0, min_samples=10)
             for rule_id, stats in accuracy.items():
                 if stats.get("fn_rate", 0) > 0.15:
                     self._fire_or_skip(
@@ -463,22 +481,26 @@ class AlertManager:
                         title=f"High False-Negative Rate — {rule_id}",
                         description=f"Rule '{rule_id}' has a {stats['fn_rate']:.0%} false-negative rate "
                                     f"({stats['total']} samples in 24h). Real threats may be bypassing this rule.",
+                        tenant_id=tenant_id,
                         metadata={"rule_id": rule_id, **stats},
                     )
                 else:
-                    self._auto_resolve(f"RULE_FN_RATE_HIGH:{rule_id}")
+                    self._auto_resolve(f"RULE_FN_RATE_HIGH:{rule_id}", tenant_id=tenant_id)
         except Exception:
             pass
 
     # ── Rule 6: Low Trust Score ─────────────────────────────────────────────
 
-    def _check_trust_score(self) -> None:
+    def _check_trust_score(self, tenant_id: str = "default") -> None:
         try:
             import database as db
             from sqlalchemy import func
             s = db.SessionLocal()
             try:
-                avg_trust = s.query(func.avg(db.Entity.current_trust_score)).scalar() or 75.0
+                _q = s.query(db.Entity)
+                if settings.tenant_isolation_enabled:
+                    _q = _q.filter(db.Entity.tenant_id == tenant_id)
+                avg_trust = _q.with_entities(func.avg(db.Entity.current_trust_score)).scalar() or 75.0
             finally:
                 s.close()
             if avg_trust < 50.0:
@@ -488,10 +510,11 @@ class AlertManager:
                     title="Average Trust Score Below 50",
                     description=f"System-wide average trust score is {avg_trust:.1f}. "
                                 f"This indicates widespread anomalous activity or model drift.",
+                    tenant_id=tenant_id,
                     metadata={"avg_trust": round(avg_trust, 2)},
                 )
             else:
-                self._auto_resolve("TRUST_SCORE_LOW")
+                self._auto_resolve("TRUST_SCORE_LOW", tenant_id=tenant_id)
         except Exception:
             pass
 
@@ -524,11 +547,13 @@ class AlertManager:
 
     # ── Rule 9: Model Feedback Error Rate ───────────────────────────────────
 
-    def _check_model_feedback(self) -> None:
+    def _check_model_feedback(self, tenant_id: str = "default") -> None:
         try:
             from intelligence_layer import get_intelligence_layer
             intel = get_intelligence_layer()
             stats = intel.model_feedback.get_stats()
+            # In complete backend isolation, ModelFeedback itself should be scoped per tenant.
+            # Assuming shared model loop for now but filtering active stats
             total = stats.get("total_routed", 0)
             fp = stats.get("fp", 0)
             fn = stats.get("fn", 0)
@@ -539,10 +564,11 @@ class AlertManager:
                     title="Model Feedback Error Rate Elevated",
                     description=f"Model feedback loop has routed {total} samples with {fp} FP and {fn} FN corrections. "
                                 f"Error rate: {(fp+fn)/max(1,total):.0%}.",
+                    tenant_id=tenant_id,
                     metadata=stats,
                 )
             else:
-                self._auto_resolve("MODEL_FEEDBACK_ERROR_RATE")
+                self._auto_resolve("MODEL_FEEDBACK_ERROR_RATE", tenant_id=tenant_id)
         except Exception:
             pass
 

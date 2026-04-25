@@ -55,6 +55,7 @@ from runtime_logging import configure_logging
 from runtime_metrics import inc_decision, inc_http, observe_sentinel_latency, render_metrics
 from runtime_security import authorizer, rate_limiter
 from runtime_settings import settings
+from tenant_scope import hot_key as _hot_key, cache_key as _cache_key
 from zero_trust_auth import (
     create_access_token,
     create_bound_session,
@@ -304,7 +305,7 @@ async def security_and_metrics_middleware(request: Request, call_next):
         )
 
     response = await call_next(request)
-    inc_http(request.method, request.url.path, response.status_code)
+    inc_http(request.method, request.url.path, response.status_code, tenant_id=getattr(request.state, "tenant_id", "default"))
     return response
 
 
@@ -587,11 +588,17 @@ def _feature_signature(data: Dict[str, Any]) -> int:
     return hash(payload)
 
 
-def get_features(entity_id: str, data: Dict[str, Any]) -> np.ndarray:
+def get_features(entity_id: str, data: Dict[str, Any], tenant_id: str = "default") -> np.ndarray:
     now = time.time()
     sig = _feature_signature(data)
+    ck = _cache_key(tenant_id, entity_id) if settings.tenant_isolation_enabled else entity_id
     with feature_cache_lock:
-        row = feature_cache.get(entity_id)
+        # Eviction guard: prevent unbounded cache growth (V9)
+        if len(feature_cache) > 10_000:
+            keys_to_drop = list(feature_cache.keys())[:2_000]
+            for k in keys_to_drop:
+                del feature_cache[k]
+        row = feature_cache.get(ck)
         if row is not None:
             cached_sig, cached_features, cached_ts = row
             if cached_sig == sig and (now - cached_ts) <= FEATURE_CACHE_TTL_SECONDS:
@@ -599,7 +606,7 @@ def get_features(entity_id: str, data: Dict[str, Any]) -> np.ndarray:
 
     features = build_features(data)
     with feature_cache_lock:
-        feature_cache[entity_id] = (sig, features, now)
+        feature_cache[ck] = (sig, features, now)
     return features
 
 
@@ -607,24 +614,26 @@ async def batch_features(requests_batch: List[Dict[str, Any]]) -> List[np.ndarra
     return [get_features(str(item.get("entity_id", "")), item) for item in requests_batch]
 
 
-def build_features_batch(records: List['TelemetryIn']) -> Dict[str, np.ndarray]:
+def build_features_batch(records: List[Tuple[str, 'TelemetryIn']]) -> Dict[str, np.ndarray]:
     features_by_entity: Dict[str, np.ndarray] = {}
-    for rec in records:
+    for tenant_id, rec in records:
         payload = rec.model_dump()
-        features_by_entity[rec.entity_id] = get_features(rec.entity_id, payload)
+        features_by_entity[f"{tenant_id}:{rec.entity_id}"] = get_features(rec.entity_id, payload, tenant_id)
     return features_by_entity
 
 
 def _build_gateway_penalty(data: Dict[str, Any], features: np.ndarray) -> float:
-    protocol = str(data.get("protocol_type", "HTTPS")).strip().upper()
+    # Handle nested telemetry if coming from /authorize endpoint
+    t = data.get("telemetry", data)
+    protocol = str(t.get("protocol_type", "HTTPS")).strip().upper()
     protocol_penalty = {"HTTPS": 0.0, "HTTP": 6.0, "SSH": 8.0}.get(protocol, 4.0)
 
     anomaly_penalty = float(features[3]) * 25.0
-    auth_penalty = _clip01(_to_int(data, "failed_auth_count", 0) / 10.0) * 15.0
-    geo_penalty = _clip01(_to_int(data, "geo_anomaly_flag", 0)) * 10.0
-    rate_penalty = _clip01(_to_float(data, "api_rate", 0.0) / 500.0) * 7.0
-    depth_penalty = _clip01(_to_int(data, "traversal_depth", 0) / 20.0) * 5.0
-    payload_penalty = _clip01(_to_float(data, "payload_size", 0.0) / 5000.0) * 5.0
+    auth_penalty = _clip01(_to_int(t, "failed_auth_count", 0) / 10.0) * 15.0
+    geo_penalty = _clip01(_to_int(t, "geo_anomaly_flag", 0)) * 10.0
+    rate_penalty = _clip01(_to_float(t, "api_rate", 0.0) / 500.0) * 7.0
+    depth_penalty = _clip01(_to_int(t, "traversal_depth", 0) / 20.0) * 5.0
+    payload_penalty = _clip01(_to_float(t, "payload_size", 0.0) / 5000.0) * 5.0
 
     return float(
         protocol_penalty
@@ -662,6 +671,7 @@ def _append_recent_event(
     prob: Optional[float],
     trust: Optional[float],
     reason: Optional[str],
+    tenant_id: str = "default",
 ) -> None:
     event = {
         "entity": entity_id,
@@ -670,6 +680,7 @@ def _append_recent_event(
         "trust": trust,
         "reason": reason,
         "time": time.time(),
+        "tenant_id": tenant_id,
     }
     with recent_events_lock:
         recent_events.append(event)
@@ -746,13 +757,15 @@ def _persist_gateway_event(
     reason: str,
     confidence: float,
     components: Dict[str, Any],
+    tenant_id: str = "default",
 ) -> None:
     s = db.SessionLocal()
     try:
-        entity = s.query(db.Entity).filter(db.Entity.id == entity_id).first()
+        entity = s.query(db.Entity).filter(db.Entity.id == entity_id, db.Entity.tenant_id == tenant_id).first()
         if not entity:
             entity = db.Entity(
                 id=entity_id,
+                tenant_id=tenant_id,
                 entity_type=str(payload.get("entity_type", "unknown")),
                 cloud_env=str(payload.get("cloud_env", "AWS")),
                 current_trust_score=75.0,
@@ -763,6 +776,7 @@ def _persist_gateway_event(
 
         telemetry = db.Telemetry(
             entity_id=entity_id,
+            tenant_id=tenant_id,
             timestamp=_to_float(payload, "timestamp", time.time()),
             timestep=payload.get("timestep"),
             api_rate=_to_float(payload, "api_rate", 120.0),
@@ -782,6 +796,7 @@ def _persist_gateway_event(
 
         enforcement = db.EnforcementAction(
             entity_id=entity_id,
+            tenant_id=tenant_id,
             decision=decision,
             reason=reason,
             trust_score_at_action=trust,
@@ -798,8 +813,10 @@ def _persist_gateway_event(
         s.commit()
 
         sentinel.deploy_block(entity_id, decision, reason)
-        db.hot_state.set(f"trust:{entity_id}", trust)
-        db.hot_state.set(f"status:{entity_id}", decision)
+        _ht = _hot_key("trust", tenant_id, entity_id) if settings.tenant_isolation_enabled else f"trust:{entity_id}"
+        _hs = _hot_key("status", tenant_id, entity_id) if settings.tenant_isolation_enabled else f"status:{entity_id}"
+        db.hot_state.set(_ht, trust)
+        db.hot_state.set(_hs, decision)
     except Exception as exc:
         s.rollback()
         logger.warning("Gateway persistence failed", extra={"entity_id": entity_id, "error": str(exc)})
@@ -821,13 +838,13 @@ def authorize_logic(
         raise HTTPException(status_code=400, detail="entity_id is required")
 
     t0 = time.perf_counter()
-    features = get_features(entity_id, data)
+    features = get_features(entity_id, data, tenant_id=tenant_id)
 
     # ── Phase D: Context Intelligence enrichment ───────────────────────────
     ctx_score = None
     try:
         intel = get_intelligence_layer()
-        ctx_score = intel.enrich_context(entity_id, data)
+        ctx_score = intel.enrich_context(entity_id, data, tenant_id=tenant_id)
         # Boost geo_anomaly_flag if context flags rate spike
         if "RATE_SPIKE" in " ".join(ctx_score.flags) and not data.get("geo_anomaly_flag"):
             data = dict(data)   # don't mutate caller's dict
@@ -841,12 +858,15 @@ def authorize_logic(
         entity_id,
         s,
         features=features,
+        tenant_id=tenant_id,
     )
 
     processing_ms = (time.perf_counter() - t0) * 1000.0
     if processing_ms > MAX_PROCESSING_MS:
-        fallback_decision = str(db.hot_state.get(f"status:{entity_id}", model_decision))
-        fallback_trust = float(db.hot_state.get(f"trust:{entity_id}", trust) or trust)
+        _fhs = _hot_key("status", tenant_id, entity_id) if settings.tenant_isolation_enabled else f"status:{entity_id}"
+        _fht = _hot_key("trust", tenant_id, entity_id) if settings.tenant_isolation_enabled else f"trust:{entity_id}"
+        fallback_decision = str(db.hot_state.get(_fhs, model_decision))
+        fallback_trust = float(db.hot_state.get(_fht, trust) or trust)
         model_decision = fallback_decision
         trust = fallback_trust
         reason = f"TIMEOUT_FALLBACK processing_ms={processing_ms:.2f} prev_state_decision={fallback_decision}"
@@ -891,6 +911,7 @@ def authorize_logic(
             confidence=float(policy_meta.get("confidence", 0.5) or 0.5),
             matched_rules=list(policy_meta.get("matched_rules", [])),
             simulation=simulation,
+            tenant_id=tenant_id,
         )
         decision = fail_safe.final_action
         policy_meta["system_mode"] = fail_safe.system_mode
@@ -944,13 +965,14 @@ def authorize_logic(
             "probability": components.get("prob_score"),
         },
     )
-    inc_decision(decision)
+    inc_decision(decision, tenant_id=tenant_id)
     _append_recent_event(
         entity_id=entity_id,
         decision=decision,
         prob=components.get("prob_score"),
         trust=trust,
         reason=policy_meta.get("reason", reason),
+        tenant_id=tenant_id,
     )
 
     if background_tasks is not None:
@@ -963,6 +985,7 @@ def authorize_logic(
             policy_meta.get("reason", reason),
             confidence,
             components,
+            tenant_id,
         )
 
     auth = {
@@ -1212,14 +1235,17 @@ def cancel_override(override_id: str, tenant_id: str = "default"):
 
 @app.get("/dashboard/summary")
 
-def get_summary(s: Session = Depends(get_db)):
-    total_entities = s.query(db.Entity).count()
-    allow_count = s.query(db.Entity).filter(db.Entity.status == "ALLOW").count()
-    rate_limit_count = s.query(db.Entity).filter(db.Entity.status == "RATE_LIMIT").count()
-    isolate_count = s.query(db.Entity).filter(db.Entity.status == "ISOLATE").count()
+def get_summary(request: Request, s: Session = Depends(get_db)):
+    _eq = s.query(db.Entity)
+    if settings.tenant_isolation_enabled:
+        _eq = _eq.filter(db.Entity.tenant_id == request.state.tenant_id)
+    total_entities = _eq.count()
+    allow_count = _eq.filter(db.Entity.status == "ALLOW").count()
+    rate_limit_count = _eq.filter(db.Entity.status == "RATE_LIMIT").count()
+    isolate_count = _eq.filter(db.Entity.status == "ISOLATE").count()
     
     # Infrastructure Integration
-    infra = sentinel.get_status()
+    infra = sentinel.get_status(request.state.tenant_id if settings.tenant_isolation_enabled else "default")
     
     # Combined Unsafe Count as requested
     unsafe_count = rate_limit_count + isolate_count
@@ -1227,10 +1253,13 @@ def get_summary(s: Session = Depends(get_db)):
     # Ensure totals match Managed Entities exactly (Account for pending/unknown)
     pending_count = total_entities - (allow_count + unsafe_count)
     
-    avg_trust = s.query(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
+    avg_trust = _eq.with_entities(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
     
     # 2. Get Threat Intelligence (Excluding 'ALLOW' decisions)
-    threats = s.query(db.EnforcementAction).filter(db.EnforcementAction.decision != 'ALLOW').order_by(db.EnforcementAction.timestamp.desc()).limit(15).all()
+    _tq = s.query(db.EnforcementAction).filter(db.EnforcementAction.decision != 'ALLOW')
+    if settings.tenant_isolation_enabled:
+        _tq = _tq.filter(db.EnforcementAction.tenant_id == request.state.tenant_id)
+    threats = _tq.order_by(db.EnforcementAction.timestamp.desc()).limit(15).all()
     threats_out = []
     for t in threats:
         reason_view = _format_model_reason(t.reason)
@@ -1286,8 +1315,10 @@ def get_summary(s: Session = Depends(get_db)):
 
 
 @app.get("/dashboard/entities")
-def get_entities(status: Optional[str] = None, search: Optional[str] = None, s: Session = Depends(get_db)):
+def get_entities(request: Request, status: Optional[str] = None, search: Optional[str] = None, s: Session = Depends(get_db)):
     query = s.query(db.Entity)
+    if settings.tenant_isolation_enabled:
+        query = query.filter(db.Entity.tenant_id == request.state.tenant_id)
     if search:
         query = query.filter(db.Entity.id.like(f"%{search}%"))
     if status and status != 'ALL':
@@ -1299,7 +1330,10 @@ def get_entities(status: Optional[str] = None, search: Optional[str] = None, s: 
     # For each entity, get latest confidence from enforcement action
     out = []
     for e in entities:
-        last_action = s.query(db.EnforcementAction).filter(db.EnforcementAction.entity_id == e.id).order_by(db.EnforcementAction.timestamp.desc()).first()
+        last_action = s.query(db.EnforcementAction).filter(
+            db.EnforcementAction.entity_id == e.id,
+            db.EnforcementAction.tenant_id == e.tenant_id
+        ).order_by(db.EnforcementAction.timestamp.desc()).first()
         out.append({
             "id": e.id,
             "cloud_env": e.cloud_env,
@@ -1428,10 +1462,14 @@ def ui_status(_: Dict[str, Any] = Depends(zero_trust_guard), s: Session = Depend
 
 
 @app.get("/ui/events")
-def ui_events(limit: int = 50, _: Dict[str, Any] = Depends(zero_trust_guard)):
+def ui_events(request: Request, limit: int = 50, _: Dict[str, Any] = Depends(zero_trust_guard)):
     lim = max(1, min(int(limit), 200))
     with recent_events_lock:
-        return list(recent_events)[-lim:]
+        events = list(recent_events)[-lim:]
+        if settings.tenant_isolation_enabled:
+            tid = getattr(request.state, "tenant_id", "default")
+            events = [e for e in events if e.get("tenant_id") == tid]
+        return events
 
 
 @app.get("/decisions/recent", response_model=List[DecisionRecordOut])
@@ -1455,9 +1493,12 @@ def ui_decisions_recent(
 
 
 @app.get("/ui/entity/{entity_id}")
-def ui_entity(entity_id: str, _: Dict[str, Any] = Depends(zero_trust_guard), s: Session = Depends(get_db)):
-    trust = db.hot_state.get(f"trust:{entity_id}")
-    status = db.hot_state.get(f"status:{entity_id}")
+def ui_entity(entity_id: str, request: Request, _: Dict[str, Any] = Depends(zero_trust_guard), s: Session = Depends(get_db)):
+    _tid = getattr(request.state, "tenant_id", "default") if hasattr(request, "state") else "default"
+    _hkt = _hot_key("trust", _tid, entity_id) if settings.tenant_isolation_enabled else f"trust:{entity_id}"
+    _hks = _hot_key("status", _tid, entity_id) if settings.tenant_isolation_enabled else f"status:{entity_id}"
+    trust = db.hot_state.get(_hkt)
+    status = db.hot_state.get(_hks)
 
     entity = s.query(db.Entity).filter(db.Entity.id == entity_id).first()
     if entity is None and (trust is None or status is None):
@@ -1890,9 +1931,12 @@ def get_model_info():
     }
 
 @app.get("/trust/{entity_id}", response_model=EntityStatus)
-def get_trust_score(entity_id: str, s: Session = Depends(get_db)):
-    cached_trust = db.hot_state.get(f"trust:{entity_id}")
-    cached_status = db.hot_state.get(f"status:{entity_id}")
+def get_trust_score(entity_id: str, request: Request, s: Session = Depends(get_db)):
+    _tid = getattr(request.state, "tenant_id", "default") if hasattr(request, "state") else "default"
+    _hkt = _hot_key("trust", _tid, entity_id) if settings.tenant_isolation_enabled else f"trust:{entity_id}"
+    _hks = _hot_key("status", _tid, entity_id) if settings.tenant_isolation_enabled else f"status:{entity_id}"
+    cached_trust = db.hot_state.get(_hkt)
+    cached_status = db.hot_state.get(_hks)
     if cached_trust is not None and cached_status is not None:
         return EntityStatus(entity_id=entity_id, trust_score=float(cached_trust), status=str(cached_status))
 
@@ -2326,7 +2370,7 @@ def soc_alert_resolve(alert_id: str, operator_id: str = "soc"):
 
 
 @app.get("/soc/timeline")
-def soc_timeline(limit: int = 50, s: Session = Depends(get_db)):
+def soc_timeline(request: Request, limit: int = 50, s: Session = Depends(get_db)):
     """
     Chronological event stream: recent decisions, safety overrides,
     circuit trips, and alerts.
@@ -2335,8 +2379,11 @@ def soc_timeline(limit: int = 50, s: Session = Depends(get_db)):
 
     # Recent enforcement actions
     try:
+        _aq = s.query(db.EnforcementAction)
+        if settings.tenant_isolation_enabled:
+            _aq = _aq.filter(db.EnforcementAction.tenant_id == request.state.tenant_id)
         actions = (
-            s.query(db.EnforcementAction)
+            _aq
             .order_by(db.EnforcementAction.timestamp.desc())
             .limit(limit)
             .all()
@@ -2398,11 +2445,14 @@ def soc_tenants_comparison():
 
 
 @app.get("/soc/decisions/distribution")
-def soc_decisions_distribution(s: Session = Depends(get_db)):
+def soc_decisions_distribution(request: Request, s: Session = Depends(get_db)):
     """Decision distribution over time."""
-    allow = s.query(db.Entity).filter(db.Entity.status == "ALLOW").count()
-    rate_limit = s.query(db.Entity).filter(db.Entity.status == "RATE_LIMIT").count()
-    isolate = s.query(db.Entity).filter(db.Entity.status == "ISOLATE").count()
+    _eq = s.query(db.Entity)
+    if settings.tenant_isolation_enabled:
+        _eq = _eq.filter(db.Entity.tenant_id == request.state.tenant_id)
+    allow = _eq.filter(db.Entity.status == "ALLOW").count()
+    rate_limit = _eq.filter(db.Entity.status == "RATE_LIMIT").count()
+    isolate = _eq.filter(db.Entity.status == "ISOLATE").count()
     return {
         "distribution": {"ALLOW": allow, "RATE_LIMIT": rate_limit, "ISOLATE": isolate},
         "total": allow + rate_limit + isolate,
@@ -2513,13 +2563,15 @@ async def gateway(request: Request, background_tasks: BackgroundTasks, s: Sessio
             )
             policy_decision = "ALLOW"
             final_action = str(response.get("decision", "ALLOW")) if isinstance(response, dict) else "ALLOW"
-            trust_score = float(db.hot_state.get(f"trust:{phase5_req.entity_id}", 0.0) or 0.0)
+            _p5_tid = getattr(request.state, "tenant_id", "default")
+            _p5_hk = _hot_key("trust", _p5_tid, phase5_req.entity_id) if settings.tenant_isolation_enabled else f"trust:{phase5_req.entity_id}"
+            trust_score = float(db.hot_state.get(_p5_hk, 0.0) or 0.0)
             risk_score = max(0.0, min(1.0, 1.0 - (trust_score / 100.0)))
 
             if phase5_gateway.metrics.events:
                 last_event = phase5_gateway.metrics.events[-1]
-                observe_sentinel_latency(last_event.get("sentinel_latency_ms", 0.0))
-                inc_decision(last_event.get("decision", "ALLOW"))
+                observe_sentinel_latency(last_event.get("sentinel_latency_ms", 0.0), tenant_id=_p5_tid)
+                inc_decision(last_event.get("decision", "ALLOW"), tenant_id=_p5_tid)
                 logger.info("Gateway decision", extra=last_event)
                 policy_decision = str(last_event.get("decision", final_action))
                 final_action = str(last_event.get("decision", final_action))
@@ -2660,13 +2712,15 @@ def gateway_feedback(data: GatewayFeedbackIn, s: Session = Depends(get_db)):
 
 
 @app.post("/ingest", status_code=202)
-def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Session = Depends(get_db)):
+def ingest_telemetry(request: Request, data: TelemetryIn, background_tasks: BackgroundTasks, s: Session = Depends(get_db)):
+    tenant_id = getattr(request.state, "tenant_id", "default")
     # 1. Ensure Entity Exists
-    entity = s.query(db.Entity).filter(db.Entity.id == data.entity_id).first()
+    entity = s.query(db.Entity).filter(db.Entity.id == data.entity_id, db.Entity.tenant_id == tenant_id).first()
     if not entity:
         # Default metadata for new entities
         entity = db.Entity(
             id=data.entity_id, 
+            tenant_id=tenant_id,
             entity_type="unknown", 
             cloud_env="AWS", 
             current_trust_score=75.0, 
@@ -2681,6 +2735,7 @@ def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Se
     for field in ["entity_type", "cloud_env", "is_attack"]:
         payload.pop(field, None)
     
+    payload["tenant_id"] = tenant_id
     telemetry = db.Telemetry(**payload)
     s.add(telemetry)
     s.commit()
@@ -2692,7 +2747,8 @@ def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Se
             data.entity_id,
             s,
             true_label=data.is_attack,
-            features=get_features(data.entity_id, data.model_dump()),
+            features=get_features(data.entity_id, data.model_dump(), tenant_id=tenant_id),
+            tenant_id=tenant_id,
         )
     except Exception as exc:
         record = observability.build_record(
@@ -2718,6 +2774,7 @@ def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Se
     # 5. Record Enforcement Action
     enforcement = db.EnforcementAction(
         entity_id=data.entity_id,
+        tenant_id=tenant_id,
         decision=decision,
         reason=reason,
         trust_score_at_action=score,
@@ -2734,12 +2791,16 @@ def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Se
     s.commit()
 
     # 6. Deploy to Infrastructure Sentinel (Closed Loop)
-    background_tasks.add_task(sentinel.deploy_block, data.entity_id, decision, reason)
+    background_tasks.add_task(sentinel.deploy_block, data.entity_id, decision, reason, tenant_id=tenant_id)
     
     # 7. Hot State Persistence (Mock Redis)
-    db.hot_state.set(f"trust:{data.entity_id}", score)
-    db.hot_state.set(f"status:{data.entity_id}", decision)
-    db.hot_state.set(f"history:{data.entity_id}", _clip01(score / 100.0))
+    _ingest_tid = getattr(request.state, "tenant_id", "default") if 'request' in dir() else "default"
+    _it = _hot_key("trust", _ingest_tid, data.entity_id) if settings.tenant_isolation_enabled else f"trust:{data.entity_id}"
+    _is = _hot_key("status", _ingest_tid, data.entity_id) if settings.tenant_isolation_enabled else f"status:{data.entity_id}"
+    _ih = _hot_key("history", _ingest_tid, data.entity_id) if settings.tenant_isolation_enabled else f"history:{data.entity_id}"
+    db.hot_state.set(_it, score)
+    db.hot_state.set(_is, decision)
+    db.hot_state.set(_ih, _clip01(score / 100.0))
 
     record = observability.build_record(
         source="ingest",
@@ -2768,13 +2829,15 @@ def ingest_telemetry(data: TelemetryIn, background_tasks: BackgroundTasks, s: Se
     }
 
 @app.post("/ingest-batch", status_code=202)
-def ingest_batch(batch: TelemetryBatch):
+def ingest_batch(request: Request, batch: TelemetryBatch):
     """
     Nuclear High-Throughput Ingest (Phase 8 Performance Tier)
     Zero-blocking memory push. Lowest possible latency.
     """
+    tenant_id = getattr(request.state, "tenant_id", "default")
     with queue_lock:
-        ingestion_queue.extend(batch.records)
+        for r in batch.records:
+            ingestion_queue.append((tenant_id, r))
     return {"status": "enqueued", "count": len(batch.records)}
 
 def telemetry_drain_worker():
@@ -2798,14 +2861,15 @@ def telemetry_drain_worker():
         s = db.SessionLocal()
         try:
             # 1. Bulk Upsert Entities (Registry)
-            entity_ids = list(set([d.entity_id for d in batch_to_process]))
+            entity_ids = list(set([d.entity_id for tid, d in batch_to_process]))
             existing_map = {e.id: e for e in s.query(db.Entity).filter(db.Entity.id.in_(entity_ids)).all()}
             
             missing_entities = []
-            for d in batch_to_process:
+            for tenant_id, d in batch_to_process:
                 if d.entity_id not in existing_map:
                     new_ent = db.Entity(
                         id=d.entity_id, 
+                        tenant_id=tenant_id,
                         entity_type=d.entity_type or "unknown", 
                         cloud_env=d.cloud_env or "AWS", 
                         current_trust_score=75.0, 
@@ -2820,8 +2884,9 @@ def telemetry_drain_worker():
             
             # 2. Bulk Save Raw Telemetry (100% Persistence)
             telemetry_objs = []
-            for data in batch_to_process:
+            for tenant_id, data in batch_to_process:
                 payload = data.model_dump()
+                payload["tenant_id"] = tenant_id
                 for field in ["entity_type", "cloud_env", "is_attack"]:
                     payload.pop(field, None)
                 telemetry_objs.append(db.Telemetry(**payload))
@@ -2838,7 +2903,7 @@ def telemetry_drain_worker():
             analytics_batch = batch_to_process[:sample_size]
             features_by_entity = build_features_batch(analytics_batch)
             
-            for data in analytics_batch:
+            for tenant_id, data in analytics_batch:
                 entity = existing_map.get(data.entity_id)
                 if not entity: continue
                 
@@ -2847,7 +2912,8 @@ def telemetry_drain_worker():
                     data.entity_id,
                     s,
                     true_label=data.is_attack,
-                    features=features_by_entity.get(data.entity_id),
+                    features=features_by_entity.get(f"{tenant_id}:{data.entity_id}"),
+                    tenant_id=tenant_id,
                 )
                 
                 # 2. Policy Enforcement & Zero Trust Overrides
@@ -2855,7 +2921,7 @@ def telemetry_drain_worker():
                     entity_id=data.entity_id,
                     trust_score=score,
                     telemetry=data.model_dump(),
-                    tenant_id="default",
+                    tenant_id=tenant_id,
                     source="autonomous_sim",
                     simulation=False # Allow metrics to populate the dashboard and API
                 )
@@ -2868,6 +2934,7 @@ def telemetry_drain_worker():
                         confidence=float(policy_verdict.confidence),
                         matched_rules=list(policy_verdict.matched_rules),
                         simulation=False,
+                        tenant_id=tenant_id,
                     )
                     if fail_safe.fail_safe_applied:
                         decision = fail_safe.final_action
@@ -2902,6 +2969,7 @@ def telemetry_drain_worker():
                 
                 enforcement = db.EnforcementAction(
                     entity_id=data.entity_id,
+                    tenant_id=tenant_id,
                     decision=decision, reason=reason,
                     trust_score_at_action=score, confidence_score=conf,
                     b_score=comps.get("b_score"), c_score=comps.get("c_score"),
@@ -2911,10 +2979,13 @@ def telemetry_drain_worker():
                     is_correct=1 if (actual_attack == (decision in ['RATE_LIMIT', 'ISOLATE'])) else 0
                 )
                 s.add(enforcement)
-                sentinel.deploy_block(data.entity_id, decision, reason)
-                db.hot_state.set(f"trust:{data.entity_id}", score)
-                db.hot_state.set(f"status:{data.entity_id}", decision)
-                db.hot_state.set(f"history:{data.entity_id}", _clip01(score / 100.0))
+                sentinel.deploy_block(data.entity_id, decision, reason, tenant_id=tenant_id)
+                _bt = _hot_key("trust", tenant_id, data.entity_id) if settings.tenant_isolation_enabled else f"trust:{data.entity_id}"
+                _bs = _hot_key("status", tenant_id, data.entity_id) if settings.tenant_isolation_enabled else f"status:{data.entity_id}"
+                _bh = _hot_key("history", tenant_id, data.entity_id) if settings.tenant_isolation_enabled else f"history:{data.entity_id}"
+                db.hot_state.set(_bt, score)
+                db.hot_state.set(_bs, decision)
+                db.hot_state.set(_bh, _clip01(score / 100.0))
             
             s.commit()
             
@@ -2928,21 +2999,32 @@ def telemetry_drain_worker():
             s.close()
 
 @app.get("/enforcement/status")
-def get_enforcement_status():
-    return sentinel.get_status()
+def get_enforcement_status(request: Request):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    return sentinel.get_status(tenant_id)
 
 @app.get("/enforcement/check/{entity_id}")
-def check_block(entity_id: str):
-    return {"blocked": sentinel.is_blocked(entity_id)}
+def check_block(request: Request, entity_id: str):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    return {"blocked": sentinel.is_blocked(entity_id, tenant_id)}
 
 # Stress Testing Endpoints REMOVED for Research Upgrade
 @app.get("/metrics/snapshot")
-def get_metrics_snapshot(s: Session = Depends(get_db)):
-    avg_trust = s.query(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
-    allow_count = s.query(func.count(db.Entity.id)).filter(db.Entity.status == "ALLOW").scalar()
-    rate_limit_count = s.query(func.count(db.Entity.id)).filter(db.Entity.status == "RATE_LIMIT").scalar()
-    isolate_count = s.query(func.count(db.Entity.id)).filter(db.Entity.status == "ISOLATE").scalar()
-    unsafe_count = s.query(func.count(db.Telemetry.id)).filter(db.Telemetry.geo_anomaly_flag == 1).scalar()
+def get_metrics_snapshot(request: Request, s: Session = Depends(get_db)):
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    query_base = s.query(db.Entity)
+    if settings.tenant_isolation_enabled and tenant_id != "default":
+        query_base = query_base.filter(db.Entity.tenant_id == tenant_id)
+
+    avg_trust = query_base.with_entities(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
+    allow_count = query_base.filter(db.Entity.status == "ALLOW").count()
+    rate_limit_count = query_base.filter(db.Entity.status == "RATE_LIMIT").count()
+    isolate_count = query_base.filter(db.Entity.status == "ISOLATE").count()
+    
+    tel_query = s.query(db.Telemetry)
+    if settings.tenant_isolation_enabled and tenant_id != "default":
+        tel_query = tel_query.filter(db.Telemetry.tenant_id == tenant_id)
+    unsafe_count = tel_query.filter(db.Telemetry.geo_anomaly_flag == 1).count()
     
     # Brain Stats (CYCLIC RESEARCH METRICS - Single Source of Truth)
     brain_snapshot = engine.last_cycle_metrics
@@ -2977,17 +3059,21 @@ def get_prometheus_metrics():
     return render_metrics()
 
 @app.websocket("/ws/metrics")
-async def websocket_metrics(websocket: WebSocket):
+async def websocket_metrics(websocket: WebSocket, tenant_id: str = "default"):
     await websocket.accept()
     try:
         while True:
             # We need a fresh DB session for each snapshot in the loop
             session = db.SessionLocal()
             try:
-                avg_trust = session.query(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
-                pass_cnt = session.query(db.Entity).filter(db.Entity.status == "ALLOW").count()
-                limit_cnt = session.query(db.Entity).filter(db.Entity.status == "RATE_LIMIT").count()
-                block_cnt = session.query(db.Entity).filter(db.Entity.status == "ISOLATE").count()
+                query_base = session.query(db.Entity)
+                if settings.tenant_isolation_enabled and tenant_id != "default":
+                    query_base = query_base.filter(db.Entity.tenant_id == tenant_id)
+                
+                avg_trust = query_base.with_entities(func.avg(db.Entity.current_trust_score)).scalar() or 0.0
+                pass_cnt = query_base.filter(db.Entity.status == "ALLOW").count()
+                limit_cnt = query_base.filter(db.Entity.status == "RATE_LIMIT").count()
+                block_cnt = query_base.filter(db.Entity.status == "ISOLATE").count()
                 brain_snapshot = engine.last_cycle_metrics
                 
                 snapshot = {

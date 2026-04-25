@@ -27,6 +27,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
+from runtime_settings import settings
+from tenant_scope import entity_key as _entity_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +86,7 @@ class ContextIntelligence:
         self._rate_history: Dict[str, Deque[Tuple[float, float]]] = {}
         self._velocity_window = velocity_window_seconds
 
-    def score(self, entity_id: str, telemetry: Dict[str, Any]) -> ContextScore:
+    def score(self, entity_id: str, telemetry: Dict[str, Any], tenant_id: str = "default") -> ContextScore:
         """Compute a ContextScore for a request."""
         flags: List[str] = []
 
@@ -101,7 +104,7 @@ class ContextIntelligence:
         # ── Behavioral velocity ─────────────────────────────────────────
         api_rate = float(telemetry.get("api_rate", 0.0))
         ts = float(telemetry.get("timestamp", time.time()))
-        velocity = self._compute_velocity(entity_id, ts, api_rate)
+        velocity = self._compute_velocity(entity_id, ts, api_rate, tenant_id=tenant_id)
         if velocity > 0.5:
             flags.append(f"RATE_SPIKE:{velocity:.2f}")
 
@@ -135,10 +138,11 @@ class ContextIntelligence:
             flags=flags,
         )
 
-    def _compute_velocity(self, entity_id: str, ts: float, api_rate: float) -> float:
+    def _compute_velocity(self, entity_id: str, ts: float, api_rate: float, tenant_id: str = "default") -> float:
         """Returns normalized rate-of-change (0=stable, 1=extreme spike)."""
         with self._lock:
-            hist = self._rate_history.setdefault(entity_id, collections.deque())
+            _ek = _entity_key(tenant_id, entity_id) if settings.tenant_isolation_enabled else entity_id
+            hist = self._rate_history.setdefault(_ek, collections.deque())
             cutoff = ts - self._velocity_window
             while hist and hist[0][0] < cutoff:
                 hist.popleft()
@@ -559,6 +563,7 @@ class ModelFeedbackSignal:
     was_correct: bool
     trust_score: float
     source: str = "feedback_loop"
+    tenant_id: str = "default"
 
 
 class ModelFeedback:
@@ -588,6 +593,7 @@ class ModelFeedback:
         true_label: int,
         trust_score: float,
         source: str = "feedback_loop",
+        tenant_id: str = "default",
     ) -> None:
         benign_actions = {"ALLOW"}
         correct = (true_label == 0 and decision in benign_actions) or \
@@ -601,6 +607,7 @@ class ModelFeedback:
             was_correct=correct,
             trust_score=trust_score,
             source=source,
+            tenant_id=tenant_id,
         )
         with self._lock:
             self._pending.append(signal)
@@ -676,8 +683,8 @@ class IntelligenceLayer:
         self.model_feedback = ModelFeedback()
         logger.info("Intelligence Layer initialized (Phase D)")
 
-    def enrich_context(self, entity_id: str, telemetry: Dict[str, Any]) -> ContextScore:
-        return self.context.score(entity_id, telemetry)
+    def enrich_context(self, entity_id: str, telemetry: Dict[str, Any], tenant_id: str = "default") -> ContextScore:
+        return self.context.score(entity_id, telemetry, tenant_id=tenant_id)
 
     def record_feedback(
         self,
@@ -710,6 +717,7 @@ class IntelligenceLayer:
                 true_label=true_label,
                 trust_score=trust_score,
                 source=source,
+                tenant_id=tenant_id,
             )
         return rec
 
