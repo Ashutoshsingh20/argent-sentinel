@@ -37,6 +37,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Literal, Optional, Tuple
+from runtime_settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +436,17 @@ class SafetyController:
 
     def __init__(self) -> None:
         self.limits = ExecutionLimits()
-        self.circuit = CircuitBreaker()
+        self.circuit = CircuitBreaker()  # default / global circuit breaker
+        self._circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self._cb_lock = threading.Lock()
+
+    def _get_circuit_breaker(self, tenant_id: str) -> CircuitBreaker:
+        """Per-tenant circuit breaker instance (created lazily)."""
+        if tenant_id not in self._circuit_breakers:
+            with self._cb_lock:
+                if tenant_id not in self._circuit_breakers:
+                    self._circuit_breakers[tenant_id] = CircuitBreaker()
+        return self._circuit_breakers[tenant_id]
 
     def enforce(
         self,
@@ -450,11 +461,12 @@ class SafetyController:
         was_overridden=True means the SafetyController changed the action.
         """
         # 1. Circuit breaker check
-        final_action, cb_override, cb_reason = self.circuit.check(
+        cb = self._get_circuit_breaker(tenant_id) if settings.tenant_isolation_enabled else self.circuit
+        final_action, cb_override, cb_reason = cb.check(
             proposed_action, simulation=simulation
         )
         if cb_override:
-            self.circuit.record_event(final_action)
+            cb.record_event(final_action)
             return final_action, True, cb_reason
 
         # 2. Execution limits check
@@ -465,22 +477,23 @@ class SafetyController:
             simulation=simulation,
         )
         if capped_action != proposed_action:
-            self.circuit.record_event(capped_action)
+            cb.record_event(capped_action)
             return capped_action, True, limit_reason
 
         # All clear
-        self.circuit.record_event(proposed_action)
+        cb.record_event(proposed_action)
         return proposed_action, False, None  # type: ignore[return-value]
 
     def get_status(self, tenant_id: Optional[str] = None) -> Dict[str, Any]:
-        cb = self.circuit.get_status()
+        cb = self._get_circuit_breaker(tenant_id) if (settings.tenant_isolation_enabled and tenant_id) else self.circuit
+        cb_status = cb.get_status()
         return {
             "circuit_breaker": {
-                "state": cb.state,
-                "opened_at": cb.opened_at,
-                "failure_count": cb.failure_count,
-                "fallback_action": cb.fallback_action,
-                "last_trigger": cb.last_trigger,
+                "state": cb_status.state,
+                "opened_at": cb_status.opened_at,
+                "failure_count": cb_status.failure_count,
+                "fallback_action": cb_status.fallback_action,
+                "last_trigger": cb_status.last_trigger,
             },
             "execution_limits": self.limits.get_stats(tenant_id=tenant_id),
         }
