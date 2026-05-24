@@ -1,0 +1,14 @@
+.venv/
+.git/
+outputs/
+data/
+models/
+policies/
+tenants/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.idea/
+.vscode/
+.DS_Store

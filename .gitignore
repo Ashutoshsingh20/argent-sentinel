@@ -1,0 +1,36 @@
+# ── Runtime artifacts (per-org volumes) ──────────────────
+data/
+models/
+outputs/
+
+# ── Tenant env files (contain secrets) ───────────────────
+tenants/*.env
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# ── IDE / OS ─────────────────────────────────────────────
+.venv/
+.env
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+
+# ── Local scratch / analysis documentation ────────────────
+analyses.md
+outputs_bak_20260426/
+

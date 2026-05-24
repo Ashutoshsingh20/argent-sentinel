@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+
+  # ── API Gateway — routes by X-Tenant-ID header ─────────
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      fintech-prod:
+        condition: service_healthy
+      cyberdyne-ops:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Org: fintech-prod ──────────────────────────────────
+  fintech-prod:
+    build: .
+    env_file: tenants/fintech-prod.env
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data/fintech-prod:/app/data
+      - ./models/fintech-prod:/app/models
+      - ./policies/fintech-prod:/app/policies
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Org: cyberdyne-ops ─────────────────────────────────
+  cyberdyne-ops:
+    build: .
+    env_file: tenants/cyberdyne-ops.env
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./data/cyberdyne-ops:/app/data
+      - ./models/cyberdyne-ops:/app/models
+      - ./policies/cyberdyne-ops:/app/policies
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
