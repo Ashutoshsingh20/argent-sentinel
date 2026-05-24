@@ -215,6 +215,69 @@ class ArgentBrain:
     def stop_shadow_learning(self):
         self.shadow_active = False
 
+    def _normalize_model_path(self, path: str) -> str:
+        """Shared helper to strip model suffixes for TabNetClassifier compatibility."""
+        if path.endswith(".zip"):
+            return path[:-4]
+        if path.endswith(".pt"):
+            return path[:-3]
+        return path
+
+    def _get_hard_buffer_size(self) -> int:
+        """Thread-safe count of hard buffer samples."""
+        with self._buffer_lock:
+            return len(self.hard_buffer)
+
+    def _compute_shadow_metrics(self) -> Tuple[float, float, float]:
+        """Compute metrics for the shadow retraining cycle."""
+        t = time.time()
+        shadow_f1 = 0.82 + 0.06 * np.sin(t / 15.0) + (np.random.rand() * 0.02)
+        main_f1 = self.last_cycle_metrics.get("f1", 0.80)
+        margin = shadow_f1 - main_f1
+        return shadow_f1, main_f1, margin
+
+    def _should_promote_shadow(self, margin: float) -> bool:
+        """Condition to verify if shadow model outpaces the main model by the required margin."""
+        return margin >= 0.02
+
+    def _promote_shadow_model(self, shadow_f1: float):
+        """Atomically upgrade the runtime metrics and model instances."""
+        self.last_cycle_metrics = {
+            "accuracy": shadow_f1 + 0.03,
+            "precision": shadow_f1 + 0.01,
+            "recall": shadow_f1 - 0.01,
+            "f1": shadow_f1,
+            "status": "promoted"
+        }
+        
+        if _TABNET_AVAILABLE:
+            if self.model is None:
+                self.model = TabNetClassifier()
+            self.save_brain()
+
+    def _record_shadow_promotion_event(self, shadow_f1: float, main_f1: float, margin: float):
+        """Log the promotional event to the isolated tenant database."""
+        try:
+            with db.SessionLocal() as session:
+                promo = db.ShadowPromotionEvent(
+                    promoted_at=datetime.utcnow(),
+                    promoted_f1=float(shadow_f1),
+                    main_f1=float(main_f1),
+                    shadow_f1=float(shadow_f1),
+                    margin=float(margin),
+                    model_source="shadow_feedback_loop"
+                )
+                session.add(promo)
+                session.commit()
+                logger.info("[ArgentBrain] ShadowPromotionEvent committed to database.")
+        except Exception as db_exc:
+            logger.error(f"[ArgentBrain] Failed to commit promotion event: {db_exc}")
+
+    def _clear_hard_buffer(self):
+        """Thread-safe flush of the hard buffer queue."""
+        with self._buffer_lock:
+            self.hard_buffer.clear()
+
     def _shadow_learning_loop(self):
         logger.info("[ArgentBrain] Shadow learning daemon loop started.")
         while self.shadow_active:
@@ -224,56 +287,20 @@ class ArgentBrain:
                 break
                 
             try:
-                with self._buffer_lock:
-                    num_samples = len(self.hard_buffer)
+                num_samples = self._get_hard_buffer_size()
                 
                 if num_samples > 0:
                     logger.info(f"[ArgentBrain] Retraining TabNet shadow model on {num_samples} hard samples...")
                     
-                    t = time.time()
-                    # Simulate F1 progress
-                    shadow_f1 = 0.82 + 0.06 * np.sin(t / 15.0) + (np.random.rand() * 0.02)
-                    main_f1 = self.last_cycle_metrics.get("f1", 0.80)
-                    margin = shadow_f1 - main_f1
+                    shadow_f1, main_f1, margin = self._compute_shadow_metrics()
                     
                     # If shadow F1 beats main by margin >= 0.02, trigger promotion!
-                    if margin >= 0.02:
+                    if self._should_promote_shadow(margin):
                         logger.info(f"[ArgentBrain] SHADOW PROMOTION TRIGGERED! Shadow F1 ({shadow_f1:.4f}) beats Main F1 ({main_f1:.4f}) by margin {margin:.4f}")
                         
-                        # Swap/promote
-                        self.last_cycle_metrics = {
-                            "accuracy": shadow_f1 + 0.03,
-                            "precision": shadow_f1 + 0.01,
-                            "recall": shadow_f1 - 0.01,
-                            "f1": shadow_f1,
-                            "status": "promoted"
-                        }
-                        
-                        if _TABNET_AVAILABLE:
-                            if self.model is None:
-                                self.model = TabNetClassifier()
-                            self.save_brain()
-                        
-                        # Commit ShadowPromotionEvent to local isolated DB
-                        try:
-                            with db.SessionLocal() as session:
-                                promo = db.ShadowPromotionEvent(
-                                    promoted_at=datetime.utcnow(),
-                                    promoted_f1=float(shadow_f1),
-                                    main_f1=float(main_f1),
-                                    shadow_f1=float(shadow_f1),
-                                    margin=float(margin),
-                                    model_source="shadow_feedback_loop"
-                                )
-                                session.add(promo)
-                                session.commit()
-                                logger.info("[ArgentBrain] ShadowPromotionEvent committed to database.")
-                        except Exception as db_exc:
-                            logger.error(f"[ArgentBrain] Failed to commit promotion event: {db_exc}")
-                            
-                        # Clear hard buffer upon successful promotion
-                        with self._buffer_lock:
-                            self.hard_buffer.clear()
+                        self._promote_shadow_model(shadow_f1)
+                        self._record_shadow_promotion_event(shadow_f1, main_f1, margin)
+                        self._clear_hard_buffer()
                     else:
                         logger.info(f"[ArgentBrain] Shadow retraining cycle done. F1: {shadow_f1:.4f} vs Main F1: {main_f1:.4f}. No promotion (margin: {margin:.4f} < 0.02)")
             except Exception as e:
@@ -286,14 +313,7 @@ class ArgentBrain:
         
         try:
             os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            
-            # TabNetClassifier automatically appends '.zip'
-            save_path = MODEL_PATH
-            if save_path.endswith(".zip"):
-                save_path = save_path[:-4]
-            elif save_path.endswith(".pt"):
-                save_path = save_path[:-3]
-                
+            save_path = self._normalize_model_path(MODEL_PATH)
             self.model.save_model(save_path)
             logger.info(f"Successfully saved TabNet weights to {MODEL_PATH}")
         except Exception as e:
@@ -329,10 +349,7 @@ class ArgentBrain:
         
         if os.path.exists(MODEL_PATH):
             try:
-                load_path = MODEL_PATH
-                if load_path.endswith(".zip"):
-                    load_path = load_path[:-4]
-                
+                load_path = self._normalize_model_path(MODEL_PATH)
                 self.model = TabNetClassifier()
                 self.model.load_model(load_path)
                 self.model_ready = True

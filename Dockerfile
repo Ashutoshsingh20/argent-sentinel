@@ -19,7 +19,7 @@ RUN mkdir -p /app/data /app/models /app/policies
 ENV APP_HOST=0.0.0.0
 ENV APP_PORT=8000
 ENV TENANT_ISOLATION=1
-ENV PYTHONPATH=/app/adaptive_zta
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 

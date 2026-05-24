@@ -27,6 +27,7 @@ fi
 # Generate unique tenant env configuration with cryptographically secure secret
 JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || echo "fallback-$(date +%s | sha256sum | cut -d' ' -f1)")
 
+mkdir -p tenants
 cat > "tenants/$ORG_ID.env" << EOF
 TENANT_ID=$ORG_ID
 APP_PORT=8000
@@ -57,7 +58,7 @@ echo "       - ./models/$ORG_ID:/app/models"
 echo "       - ./policies/$ORG_ID:/app/policies"
 echo "     restart: unless-stopped"
 echo "     healthcheck:"
-echo "       test: [\"CMD\", \"curl\", "-f\", \"http://localhost:8000/healthz\"]"
+echo "       test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8000/healthz\"]"
 echo "       interval: 30s"
 echo "       timeout: 10s"
 echo "       retries: 3"
