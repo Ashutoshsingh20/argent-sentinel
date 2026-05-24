@@ -2439,6 +2439,11 @@ def soc_tenants_comparison():
     try:
         tr = get_tenant_registry()
         tenants = tr.list_all()
+        if settings.tenant_isolation_enabled:
+            active_tenant = os.getenv("TENANT_ID", "default")
+            tenants = [t for t in tenants if t.get("tenant_id") == active_tenant]
+            if not tenants:
+                tenants = [{"tenant_id": active_tenant, "tenant_name": active_tenant.upper(), "active": True}]
         return {"tenants": tenants}
     except Exception as exc:
         return {"tenants": [], "error": str(exc)}
